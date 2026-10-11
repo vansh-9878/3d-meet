@@ -52,6 +52,46 @@ export function useWebRTC(socket, roomId, userName) {
   useEffect(() => {
     let isMounted = true;
     const fetchIceConfig = async () => {
+      // 1. Check if client has Metered App Name + API Key directly in env (e.g. Vercel)
+      const clientMeteredKey = import.meta.env?.VITE_METERED_API_KEY || import.meta.env?.VITE_SECRET_KEY;
+      const clientMeteredApp = import.meta.env?.VITE_METERED_APP_NAME;
+      if (clientMeteredKey && clientMeteredApp) {
+        try {
+          const res = await fetch(`https://${clientMeteredApp}.metered.live/api/v1/turn/credentials?apiKey=${clientMeteredKey}`).catch(() => null);
+          if (res && res.ok) {
+            const data = await res.json();
+            if (data?.length > 0 && isMounted) {
+              iceConfigRef.current = { iceServers: data };
+              console.log('[WebRTC] Loaded Metered TURN servers via client API:', data.length);
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Check static TURN credentials in client env
+      const staticTurnUser = import.meta.env?.VITE_TURN_USERNAME || import.meta.env?.VITE_METERED_USERNAME;
+      const staticTurnCred = import.meta.env?.VITE_TURN_CREDENTIAL || import.meta.env?.VITE_METERED_CREDENTIAL || import.meta.env?.VITE_TURN_PASSWORD;
+      if (staticTurnUser && staticTurnCred && isMounted) {
+        iceConfigRef.current = {
+          iceServers: [
+            ...DEFAULT_ICE_SERVERS,
+            {
+              urls: [
+                'turn:global.relay.metered.ca:80',
+                'turn:global.relay.metered.ca:443',
+                'turns:global.relay.metered.ca:443?transport=tcp'
+              ],
+              username: staticTurnUser,
+              credential: staticTurnCred
+            }
+          ]
+        };
+        console.log('[WebRTC] Loaded static TURN credentials from client env');
+        return;
+      }
+
+      // 3. Query backend /api/ice-servers
       try {
         const apiUrl = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_SOCKET_URL;
         const endpoint = apiUrl ? `${apiUrl.replace(/\/$/, '')}/api/ice-servers` : '/api/ice-servers';
@@ -60,13 +100,13 @@ export function useWebRTC(socket, roomId, userName) {
           const data = await res.json();
           if (data?.iceServers?.length > 0 && isMounted) {
             iceConfigRef.current = { iceServers: data.iceServers };
-            console.log('[WebRTC] Loaded dynamic ICE servers from server:', data.iceServers.length);
+            console.log('[WebRTC] Loaded dynamic ICE servers from backend:', data.iceServers.length);
             return;
           }
         }
       } catch (_) {}
 
-      // Check client-side environment fallback
+      // 4. Custom TURN URL fallback
       const customTurn = import.meta.env?.VITE_TURN_URL;
       if (customTurn && isMounted) {
         iceConfigRef.current = {
@@ -506,7 +546,11 @@ export function useWebRTC(socket, roomId, userName) {
     if (!socket) return;
 
     // Room participants list when this user joins
-    const handleRoomUsers = ({ users }) => {
+    const handleRoomUsers = ({ users, iceServers }) => {
+      if (iceServers && iceServers.length > 0) {
+        console.log('[WebRTC] Ingested ICE servers directly from room-users event:', iceServers.length);
+        iceConfigRef.current = { iceServers };
+      }
       const states = {};
       users.forEach(u => {
         if (u.id !== socket.id) {

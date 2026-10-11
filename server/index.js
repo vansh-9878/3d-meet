@@ -27,8 +27,15 @@ app.get('/api/rooms', (req, res) => {
   res.json({ rooms: roomSummaries });
 });
 
-// Provide dynamic ICE servers (STUN + optional TURN) to connecting clients
-app.get('/api/ice-servers', async (req, res) => {
+let cachedIceServers = null;
+let lastIceFetchTime = 0;
+
+async function getIceServers() {
+  const now = Date.now();
+  if (cachedIceServers && (now - lastIceFetchTime < 10 * 60 * 1000)) {
+    return cachedIceServers;
+  }
+
   const defaultIceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -40,33 +47,70 @@ app.get('/api/ice-servers', async (req, res) => {
     { urls: 'stun:stun.nextcloud.com:443' }
   ];
 
-  const meteredApiKey = process.env.METERED_API_KEY;
-  const meteredAppName = process.env.METERED_APP_NAME;
+  const meteredApiKey = process.env.METERED_API_KEY || process.env.VITE_METERED_API_KEY;
+  const meteredAppName = process.env.METERED_APP_NAME || process.env.VITE_METERED_APP_NAME;
 
-  if (meteredApiKey) {
+  // Case 1: Metered App Name + API Key
+  if (meteredApiKey && meteredAppName) {
     try {
-      const url = meteredAppName
-        ? `https://${meteredAppName}.metered.live/api/v1/turn/credentials?apiKey=${meteredApiKey}`
-        : `https://relay.metered.ca/api/v1/turn/credentials?apiKey=${meteredApiKey}`;
+      const url = `https://${meteredAppName}.metered.live/api/v1/turn/credentials?apiKey=${meteredApiKey}`;
       const response = await fetch(url);
       if (response.ok) {
         const iceServers = await response.json();
-        return res.json({ iceServers });
+        console.log('[Server] Successfully fetched Metered TURN servers via API:', iceServers.length);
+        cachedIceServers = iceServers;
+        lastIceFetchTime = now;
+        return iceServers;
+      } else {
+        console.warn(`[Server] Metered API returned ${response.status} for app "${meteredAppName}"`);
       }
     } catch (err) {
       console.warn('[Server] Error fetching Metered TURN credentials:', err.message);
     }
   }
 
-  if (process.env.TURN_URL) {
+  // Case 2: Static TURN credentials from Metered dashboard
+  const turnUsername = process.env.TURN_USERNAME || process.env.METERED_USERNAME || process.env.VITE_TURN_USERNAME;
+  const turnPassword = process.env.TURN_PASSWORD || process.env.TURN_CREDENTIAL || process.env.METERED_CREDENTIAL || process.env.METERED_PASSWORD || process.env.VITE_TURN_CREDENTIAL;
+
+  if (turnUsername && turnPassword) {
+    const turnServers = [
+      ...defaultIceServers,
+      {
+        urls: [
+          'turn:global.relay.metered.ca:80',
+          'turn:global.relay.metered.ca:443',
+          'turns:global.relay.metered.ca:443?transport=tcp'
+        ],
+        username: turnUsername,
+        credential: turnPassword
+      }
+    ];
+    console.log('[Server] Loaded configured TURN credentials for global.relay.metered.ca');
+    cachedIceServers = turnServers;
+    lastIceFetchTime = now;
+    return turnServers;
+  }
+
+  // Case 3: Custom TURN URL
+  const customTurnUrl = process.env.TURN_URL || process.env.VITE_TURN_URL;
+  if (customTurnUrl) {
     defaultIceServers.push({
-      urls: process.env.TURN_URL,
+      urls: customTurnUrl,
       username: process.env.TURN_USERNAME || '',
       credential: process.env.TURN_CREDENTIAL || ''
     });
   }
 
-  res.json({ iceServers: defaultIceServers });
+  cachedIceServers = defaultIceServers;
+  lastIceFetchTime = now;
+  return defaultIceServers;
+}
+
+// Provide dynamic ICE servers (STUN + optional TURN) to connecting clients
+app.get('/api/ice-servers', async (req, res) => {
+  const iceServers = await getIceServers();
+  res.json({ iceServers });
 });
 
 const server = http.createServer(app);
@@ -84,7 +128,7 @@ io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
 
   // Join a specific room with unique roomId
-  socket.on('join-room', ({ roomId, user }) => {
+  socket.on('join-room', async ({ roomId, user }) => {
     // Sanitize room ID
     const activeRoomId = (roomId && roomId.trim()) ? roomId.trim().toLowerCase() : 'main-office';
     socket.join(activeRoomId);
@@ -117,11 +161,14 @@ io.on('connection', (socket) => {
     room.set(socket.id, userData);
     socket.data.roomId = activeRoomId;
 
-    // Send the current list of participants in this room to newly joined player
+    // Send the current list of participants + active ICE servers to newly joined player
     const participantsList = Array.from(room.values());
+    const iceServers = await getIceServers();
+
     socket.emit('room-users', {
       roomId: activeRoomId,
-      users: participantsList
+      users: participantsList,
+      iceServers
     });
 
     // Broadcast to other participants in this room that a new user joined
