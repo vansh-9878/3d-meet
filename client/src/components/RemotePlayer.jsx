@@ -17,14 +17,29 @@ export function RemotePlayer({ player, videoStream = null, isCamActive = false, 
 
   // Play incoming audio stream if available
   useEffect(() => {
-    if (audioRef.current && videoStream) {
-      if (audioRef.current.srcObject !== videoStream) {
-        audioRef.current.srcObject = videoStream;
-        const playPromise = audioRef.current.play();
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.autoplay = true;
+      audio.playsInline = true;
+      audio.setAttribute('playsinline', '');
+      audio.setAttribute('webkit-playsinline', '');
+      audio.style.position = 'fixed';
+      audio.style.top = '-9999px';
+      audio.style.left = '-9999px';
+      audio.style.opacity = '0';
+      audio.style.pointerEvents = 'none';
+      document.body.appendChild(audio);
+      audioRef.current = audio;
+    }
+
+    if (videoStream) {
+      audio.srcObject = videoStream;
+      const playAudio = () => {
+        const playPromise = audio.play();
         if (playPromise !== undefined) {
           playPromise.catch(e => {
-            console.warn('[RemotePlayer] Remote audio autoplay blocked by browser policy:', e);
-            // Retry on any subsequent user interaction with the document
+            console.warn('[RemotePlayer] Remote audio autoplay blocked:', e);
             const resumeAudio = () => {
               if (audioRef.current) {
                 audioRef.current.play().catch(() => {});
@@ -36,8 +51,27 @@ export function RemotePlayer({ player, videoStream = null, isCamActive = false, 
             window.addEventListener('keydown', resumeAudio, { once: true });
           });
         }
-      }
+      };
+
+      playAudio();
+      videoStream.onaddtrack = playAudio;
+      videoStream.getAudioTracks().forEach(track => {
+        track.onunmute = playAudio;
+      });
+    } else {
+      audio.srcObject = null;
     }
+
+    return () => {
+      if (audio) {
+        audio.pause();
+        audio.srcObject = null;
+        if (audio.parentNode) {
+          audio.parentNode.removeChild(audio);
+        }
+        audioRef.current = null;
+      }
+    };
   }, [videoStream]);
 
   // Update target when player prop changes
@@ -58,11 +92,6 @@ export function RemotePlayer({ player, videoStream = null, isCamActive = false, 
 
   return (
     <group>
-      {videoStream && (
-        <Html style={{ display: 'none' }}>
-          <audio ref={audioRef} autoPlay playsInline />
-        </Html>
-      )}
       <CharacterAvatar
         position={[currentPos.current.x, currentPos.current.y, currentPos.current.z]}
         rotation={currentRot.current}

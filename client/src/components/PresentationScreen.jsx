@@ -35,36 +35,62 @@ export function PresentationScreen({ screenStream, presenterName }) {
     if (screenStream) {
       video.srcObject = screenStream;
       const handlePlay = () => {
-        if (!videoTexture) {
-          const texture = new THREE.VideoTexture(video);
-          texture.minFilter = THREE.LinearFilter;
-          texture.magFilter = THREE.LinearFilter;
-          texture.format = THREE.RGBAFormat;
-          texture.colorSpace = THREE.SRGBColorSpace;
-          texture.generateMipmaps = false;
-          setVideoTexture(texture);
-        }
+        setVideoTexture(prev => {
+          if (!prev) {
+            const texture = new THREE.VideoTexture(video);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.format = THREE.RGBAFormat;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.generateMipmaps = false;
+            return texture;
+          }
+          return prev;
+        });
       };
 
       video.addEventListener('loadedmetadata', () => {
-        video.play().catch(e => console.warn('Presentation video auto-play prevented:', e));
+        video.play().then(handlePlay).catch(e => console.warn('Presentation video auto-play prevented:', e));
       });
       video.addEventListener('playing', handlePlay);
+      video.addEventListener('loadeddata', handlePlay);
+      video.addEventListener('canplay', handlePlay);
 
       video.play()
         .then(handlePlay)
-        .catch(e => console.warn('Presentation video auto-play prevented:', e));
+        .catch(e => {
+          console.warn('Presentation video auto-play prevented:', e);
+          const resumeOnGesture = () => {
+            if (videoRef.current) {
+              videoRef.current.play().then(handlePlay).catch(() => {});
+            }
+            window.removeEventListener('click', resumeOnGesture);
+            window.removeEventListener('keydown', resumeOnGesture);
+          };
+          window.addEventListener('click', resumeOnGesture, { once: true });
+          window.addEventListener('keydown', resumeOnGesture, { once: true });
+        });
 
       screenStream.onaddtrack = () => {
-        video.srcObject = screenStream;
-        video.play().catch(() => {});
+        if (videoRef.current) {
+          videoRef.current.srcObject = screenStream;
+          videoRef.current.play().then(handlePlay).catch(() => {});
+        }
       };
+
+      screenStream.getVideoTracks().forEach(track => {
+        track.onunmute = () => {
+          if (videoRef.current) {
+            videoRef.current.play().then(handlePlay).catch(() => {});
+          }
+        };
+      });
     } else {
       video.srcObject = null;
-      if (videoTexture) {
-        videoTexture.dispose();
-      }
-      setVideoTexture(null);
+      setVideoTexture(prev => {
+        if (prev) prev.dispose();
+        return null;
+      });
     }
 
     return () => {

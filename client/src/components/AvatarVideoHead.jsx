@@ -43,6 +43,7 @@ export function AvatarVideoHead({
   isCamActive = false,
   isLocal = false,
   zoom = 1.2,
+  initials = 'ME',
   materials,
   hairStyle = 'executive',
   accessory = 'glasses'
@@ -168,7 +169,7 @@ export function AvatarVideoHead({
         textureRef.current = null;
       }
     };
-  }, [videoStream, isCamActive, isLocal, zoom]);
+  }, [videoStream, isCamActive, isLocal]);
 
   // Update zoom when zoom prop changes
   useEffect(() => {

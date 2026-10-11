@@ -183,7 +183,9 @@ io.on('connection', (socket) => {
 
   // WebRTC Signaling: Offer
   socket.on('webrtc-offer', ({ target, sdp, type = 'media' }) => {
-    socket.to(target).emit('webrtc-offer', {
+    if (!target) return;
+    console.log(`[WebRTC Signaling] Offer from ${socket.id} -> ${target} (${type})`);
+    io.to(target).emit('webrtc-offer', {
       caller: socket.id,
       sdp,
       type
@@ -192,7 +194,9 @@ io.on('connection', (socket) => {
 
   // WebRTC Signaling: Answer
   socket.on('webrtc-answer', ({ target, sdp, type = 'media' }) => {
-    socket.to(target).emit('webrtc-answer', {
+    if (!target) return;
+    console.log(`[WebRTC Signaling] Answer from ${socket.id} -> ${target} (${type})`);
+    io.to(target).emit('webrtc-answer', {
       responder: socket.id,
       sdp,
       type
@@ -201,7 +205,8 @@ io.on('connection', (socket) => {
 
   // WebRTC Signaling: ICE Candidate
   socket.on('webrtc-ice-candidate', ({ target, candidate, type = 'media' }) => {
-    socket.to(target).emit('webrtc-ice-candidate', {
+    if (!target || !candidate) return;
+    io.to(target).emit('webrtc-ice-candidate', {
       sender: socket.id,
       candidate,
       type
