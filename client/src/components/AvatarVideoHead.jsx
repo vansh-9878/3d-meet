@@ -111,26 +111,57 @@ export function AvatarVideoHead({
       setHasValidVideo(true);
     };
 
+    const onVideoReady = () => {
+      setupTexture();
+    };
+
     video.addEventListener('loadedmetadata', () => {
-      video.play().catch(e => console.warn('Avatar video play error:', e));
+      video.play().then(setupTexture).catch(e => console.warn('Avatar video play error:', e));
     });
-    video.addEventListener('playing', setupTexture);
-    video.addEventListener('canplay', setupTexture);
+    video.addEventListener('loadeddata', onVideoReady);
+    video.addEventListener('playing', onVideoReady);
+    video.addEventListener('canplay', onVideoReady);
+    video.addEventListener('timeupdate', onVideoReady);
 
     video.play()
       .then(setupTexture)
-      .catch(e => console.warn('Avatar video play:', e));
+      .catch(e => {
+        console.warn('Avatar video play:', e);
+        // Retry on document click/interaction if autoplay blocked
+        const onUserGesture = () => {
+          if (videoRef.current) {
+            videoRef.current.play().then(setupTexture).catch(() => {});
+          }
+          window.removeEventListener('click', onUserGesture);
+          window.removeEventListener('keydown', onUserGesture);
+        };
+        window.addEventListener('click', onUserGesture, { once: true });
+        window.addEventListener('keydown', onUserGesture, { once: true });
+      });
 
     // Handle asynchronous track additions to the MediaStream
     videoStream.onaddtrack = () => {
-      video.srcObject = videoStream;
-      video.play().catch(() => {});
+      if (videoRef.current) {
+        videoRef.current.srcObject = videoStream;
+        videoRef.current.play().then(setupTexture).catch(() => {});
+      }
     };
+
+    // Handle track unmute events
+    videoStream.getVideoTracks().forEach(track => {
+      track.onunmute = () => {
+        if (videoRef.current) {
+          videoRef.current.play().then(setupTexture).catch(() => {});
+        }
+      };
+    });
 
     return () => {
       if (video) {
-        video.removeEventListener('playing', setupTexture);
-        video.removeEventListener('canplay', setupTexture);
+        video.removeEventListener('loadeddata', onVideoReady);
+        video.removeEventListener('playing', onVideoReady);
+        video.removeEventListener('canplay', onVideoReady);
+        video.removeEventListener('timeupdate', onVideoReady);
       }
       if (textureRef.current) {
         textureRef.current.dispose();

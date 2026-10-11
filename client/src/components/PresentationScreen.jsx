@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 /**
@@ -11,27 +12,58 @@ export function PresentationScreen({ screenStream, presenterName }) {
   const [videoTexture, setVideoTexture] = useState(null);
 
   useEffect(() => {
-    if (!videoRef.current) {
-      const vid = document.createElement('video');
-      vid.autoplay = true;
-      vid.playsInline = true;
-      vid.muted = true;
-      videoRef.current = vid;
+    let video = videoRef.current;
+    if (!video) {
+      video = document.createElement('video');
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.setAttribute('muted', '');
+      video.style.position = 'fixed';
+      video.style.top = '-9999px';
+      video.style.left = '-9999px';
+      video.style.width = '640px';
+      video.style.height = '360px';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      document.body.appendChild(video);
+      videoRef.current = video;
     }
-
-    const video = videoRef.current;
 
     if (screenStream) {
       video.srcObject = screenStream;
-      video.play().catch(e => console.warn('Presentation video auto-play prevented:', e));
+      const handlePlay = () => {
+        if (!videoTexture) {
+          const texture = new THREE.VideoTexture(video);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.format = THREE.RGBAFormat;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.generateMipmaps = false;
+          setVideoTexture(texture);
+        }
+      };
 
-      const texture = new THREE.VideoTexture(video);
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.format = THREE.RGBAFormat;
-      setVideoTexture(texture);
+      video.addEventListener('loadedmetadata', () => {
+        video.play().catch(e => console.warn('Presentation video auto-play prevented:', e));
+      });
+      video.addEventListener('playing', handlePlay);
+
+      video.play()
+        .then(handlePlay)
+        .catch(e => console.warn('Presentation video auto-play prevented:', e));
+
+      screenStream.onaddtrack = () => {
+        video.srcObject = screenStream;
+        video.play().catch(() => {});
+      };
     } else {
       video.srcObject = null;
+      if (videoTexture) {
+        videoTexture.dispose();
+      }
       setVideoTexture(null);
     }
 
@@ -41,6 +73,15 @@ export function PresentationScreen({ screenStream, presenterName }) {
       }
     };
   }, [screenStream]);
+
+  // Keep screen share texture updated on every rendered frame
+  useFrame(() => {
+    if (videoTexture && videoRef.current) {
+      if (videoRef.current.readyState >= videoRef.current.HAVE_CURRENT_DATA) {
+        videoTexture.needsUpdate = true;
+      }
+    }
+  });
 
   return (
     <group position={[0, 4.2, -11.6]}>

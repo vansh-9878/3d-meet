@@ -20,7 +20,22 @@ export function RemotePlayer({ player, videoStream = null, isCamActive = false, 
     if (audioRef.current && videoStream) {
       if (audioRef.current.srcObject !== videoStream) {
         audioRef.current.srcObject = videoStream;
-        audioRef.current.play().catch(e => console.warn('Remote audio autoplay:', e));
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(e => {
+            console.warn('[RemotePlayer] Remote audio autoplay blocked by browser policy:', e);
+            // Retry on any subsequent user interaction with the document
+            const resumeAudio = () => {
+              if (audioRef.current) {
+                audioRef.current.play().catch(() => {});
+              }
+              window.removeEventListener('click', resumeAudio);
+              window.removeEventListener('keydown', resumeAudio);
+            };
+            window.addEventListener('click', resumeAudio, { once: true });
+            window.addEventListener('keydown', resumeAudio, { once: true });
+          });
+        }
       }
     }
   }, [videoStream]);

@@ -11,8 +11,30 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    // Open Relay Project public TURN servers for NAT / symmetric firewall traversal
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelay',
+      credential: 'openrelay'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelay',
+      credential: 'openrelay'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelay',
+      credential: 'openrelay'
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 export function useWebRTC(socket, roomId, userName) {
@@ -54,18 +76,34 @@ export function useWebRTC(socket, roomId, userName) {
     // Handle receiving remote audio/video tracks
     pc.ontrack = (event) => {
       const incomingStream = event.streams[0] || new MediaStream([event.track]);
-      setRemoteStreams(prev => {
-        const existing = prev[peerId] || new MediaStream();
-        incomingStream.getTracks().forEach(t => {
-          if (!existing.getTracks().some(et => et.id === t.id)) {
-            existing.addTrack(t);
-          }
+      
+      const updateStream = () => {
+        setRemoteStreams(prev => {
+          const existing = prev[peerId] || new MediaStream();
+          incomingStream.getTracks().forEach(t => {
+            if (!existing.getTracks().some(et => et.id === t.id)) {
+              existing.addTrack(t);
+            }
+          });
+          return {
+            ...prev,
+            [peerId]: new MediaStream(existing.getTracks())
+          };
         });
-        return {
-          ...prev,
-          [peerId]: new MediaStream(existing.getTracks())
-        };
-      });
+      };
+
+      updateStream();
+      event.track.onunmute = updateStream;
+      event.track.onended = () => {
+        setRemoteStreams(prev => {
+          if (!prev[peerId]) return prev;
+          const remainingTracks = prev[peerId].getTracks().filter(t => t.id !== event.track.id);
+          return {
+            ...prev,
+            [peerId]: new MediaStream(remainingTracks)
+          };
+        });
+      };
     };
 
     pc.onicecandidate = (event) => {
@@ -81,10 +119,12 @@ export function useWebRTC(socket, roomId, userName) {
     return pc;
   }, [socket]);
 
-  // Helper to initiate offer to peer
-  const initiateConnection = useCallback(async (peerId) => {
-    const pc = createPeerConnection(peerId);
+  // Helper to safely renegotiate or send offer to peer
+  const sendOfferToPeer = useCallback(async (peerId, pc) => {
     try {
+      if (!pc || pc.signalingState !== 'stable') {
+        return;
+      }
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true
@@ -97,9 +137,15 @@ export function useWebRTC(socket, roomId, userName) {
         type: 'media'
       });
     } catch (err) {
-      console.error('[WebRTC] Error initiating offer to peer:', peerId, err);
+      console.warn('[WebRTC] Error sending offer to peer:', peerId, err);
     }
-  }, [socket, createPeerConnection]);
+  }, [socket]);
+
+  // Helper to initiate connection to peer
+  const initiateConnection = useCallback(async (peerId) => {
+    const pc = createPeerConnection(peerId);
+    await sendOfferToPeer(peerId, pc);
+  }, [createPeerConnection, sendOfferToPeer]);
 
   // 1. Toggle Local Camera
   const toggleCamera = useCallback(async () => {
@@ -115,7 +161,7 @@ export function useWebRTC(socket, roomId, userName) {
         }
 
         // Inform all WebRTC peer connections that video is stopped
-        Object.values(peerConnections.current).forEach(async (pc) => {
+        Object.entries(peerConnections.current).forEach(async ([peerId, pc]) => {
           try {
             const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
             if (sender) {
@@ -172,16 +218,7 @@ export function useWebRTC(socket, roomId, userName) {
               await sender.replaceTrack(newVideoTrack);
             } else {
               pc.addTrack(newVideoTrack, localStreamRef.current);
-              const offer = await pc.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true
-              });
-              await pc.setLocalDescription(offer);
-              socket?.emit('webrtc-offer', {
-                target: peerId,
-                sdp: pc.localDescription,
-                type: 'media'
-              });
+              await sendOfferToPeer(peerId, pc);
             }
           } catch (e) {
             console.warn('[WebRTC] Error attaching video track to peer connection:', peerId, e);
@@ -196,7 +233,7 @@ export function useWebRTC(socket, roomId, userName) {
       console.warn('[WebRTC] Could not access camera:', err);
       alert('Camera access was not granted or no webcam device was found.');
     }
-  }, [isCamActive, socket]);
+  }, [isCamActive, socket, sendOfferToPeer]);
 
   // 2. Toggle Local Microphone
   const toggleMic = useCallback(async () => {
@@ -232,13 +269,7 @@ export function useWebRTC(socket, roomId, userName) {
                 await sender.replaceTrack(audioTrack);
               } else {
                 pc.addTrack(audioTrack, localStreamRef.current);
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                socket?.emit('webrtc-offer', {
-                  target: peerId,
-                  sdp: pc.localDescription,
-                  type: 'media'
-                });
+                await sendOfferToPeer(peerId, pc);
               }
             }
           });
@@ -255,7 +286,7 @@ export function useWebRTC(socket, roomId, userName) {
       console.warn('[WebRTC] Could not access microphone:', err);
       alert('Microphone access was not granted or no microphone device was found.');
     }
-  }, [isMicActive, socket]);
+  }, [isMicActive, socket, sendOfferToPeer]);
 
   // 3. Screen Sharing (Cast to Presentation TV)
   const toggleScreenShare = useCallback(async () => {
@@ -365,14 +396,16 @@ export function useWebRTC(socket, roomId, userName) {
           screenPeerConnections.current[caller] = screenPC;
 
           screenPC.ontrack = (event) => {
-            const [stream] = event.streams;
-            if (stream) {
+            const incoming = event.streams[0] || new MediaStream([event.track]);
+            const setStream = () => {
               setScreenPresenter(prev => ({
                 presenterId: caller,
                 presenterName: prev?.presenterName || 'Presenter',
-                stream
+                stream: incoming
               }));
-            }
+            };
+            setStream();
+            event.track.onunmute = setStream;
           };
 
           screenPC.onicecandidate = (event) => {
