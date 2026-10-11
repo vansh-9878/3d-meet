@@ -58,6 +58,7 @@ export default function App() {
     isMicActive,
     isScreenSharing,
     screenPresenter,
+    iceConnectionStatus,
     toggleCamera,
     toggleMic,
     toggleScreenShare
@@ -525,6 +526,7 @@ export default function App() {
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={toggleScreenShare}
         screenPresenter={screenPresenter}
+        iceConnectionStatus={iceConnectionStatus}
       />
 
       {/* Avatar Customization Modal */}

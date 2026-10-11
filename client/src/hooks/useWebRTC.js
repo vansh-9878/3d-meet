@@ -5,31 +5,21 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * 1. User media (Camera & Microphone) capture
  * 2. Screen sharing capture
  * 3. Peer-to-peer WebRTC mesh connections (RTCPeerConnection)
- * 4. Pre-allocated transceivers with replaceTrack for instant, collision-free media streaming
- * 5. ICE candidate negotiation & offer/answer signaling via Socket.IO
+ * 4. Cross-browser transceiver negotiation (Chrome, Edge, Firefox, Safari)
+ * 5. Dynamic STUN/TURN ICE server configuration
+ * 6. ICE candidate negotiation & offer/answer signaling via Socket.IO
  */
 
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:stun.nextcloud.com:443' }
-  ]
-};
-
-// Optionally inject user-provided TURN server if defined in environment
-if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TURN_URL) {
-  RTC_CONFIG.iceServers.push({
-    urls: import.meta.env.VITE_TURN_URL,
-    username: import.meta.env.VITE_TURN_USERNAME || '',
-    credential: import.meta.env.VITE_TURN_CREDENTIAL || ''
-  });
-}
+const DEFAULT_ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.services.mozilla.com' },
+  { urls: 'stun:stun.nextcloud.com:443' }
+];
 
 export function useWebRTC(socket, roomId, userName) {
   const [localStream, setLocalStream] = useState(null);
@@ -43,6 +33,8 @@ export function useWebRTC(socket, roomId, userName) {
   const [remoteStreams, setRemoteStreams] = useState({});
   // peerMediaStates: { [peerId]: { isCamActive: boolean, isMicActive: boolean, camZoom?: number } }
   const [peerMediaStates, setPeerMediaStates] = useState({});
+  // Overall WebRTC ICE connection status ('new' | 'checking' | 'connected' | 'completed' | 'failed' | 'disconnected')
+  const [iceConnectionStatus, setIceConnectionStatus] = useState('new');
 
   const peerConnections = useRef({}); // peerId -> RTCPeerConnection (camera/mic)
   const screenPeerConnections = useRef({}); // peerId -> RTCPeerConnection (screen share)
@@ -54,30 +46,73 @@ export function useWebRTC(socket, roomId, userName) {
   const isMicActiveRef = useRef(false);
   const isScreenSharingRef = useRef(false);
   const makingOffer = useRef({}); // peerId -> boolean
+  const iceConfigRef = useRef({ iceServers: DEFAULT_ICE_SERVERS });
+
+  // Dynamically fetch STUN/TURN servers from backend or environment if configured
+  useEffect(() => {
+    let isMounted = true;
+    const fetchIceConfig = async () => {
+      try {
+        const apiUrl = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_SOCKET_URL;
+        const endpoint = apiUrl ? `${apiUrl.replace(/\/$/, '')}/api/ice-servers` : '/api/ice-servers';
+        const res = await fetch(endpoint).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data?.iceServers?.length > 0 && isMounted) {
+            iceConfigRef.current = { iceServers: data.iceServers };
+            console.log('[WebRTC] Loaded dynamic ICE servers from server:', data.iceServers.length);
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // Check client-side environment fallback
+      const customTurn = import.meta.env?.VITE_TURN_URL;
+      if (customTurn && isMounted) {
+        iceConfigRef.current = {
+          iceServers: [
+            ...DEFAULT_ICE_SERVERS,
+            {
+              urls: customTurn,
+              username: import.meta.env.VITE_TURN_USERNAME || '',
+              credential: import.meta.env.VITE_TURN_CREDENTIAL || ''
+            }
+          ]
+        };
+      }
+    };
+    fetchIceConfig();
+    return () => { isMounted = false; };
+  }, []);
 
   // Helper to create WebRTC Peer Connection for user camera/mic
-  const createPeerConnection = useCallback((peerId) => {
+  // isOfferer: true when this client creates the initial offer
+  const createPeerConnection = useCallback((peerId, isOfferer = false) => {
     if (peerConnections.current[peerId]) {
       return peerConnections.current[peerId];
     }
 
-    console.log(`[WebRTC] Initializing PeerConnection for ${peerId}`);
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    console.log(`[WebRTC] Initializing PeerConnection for ${peerId} (isOfferer=${isOfferer})`);
+    const pc = new RTCPeerConnection(iceConfigRef.current);
     peerConnections.current[peerId] = pc;
 
-    // Attach active local tracks or pre-allocate transceivers
-    const currentAudioTrack = localStreamRef.current?.getAudioTracks()[0] || null;
-    const currentVideoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+    // Only the OFFERER pre-allocates transceivers before creating the offer.
+    // The ANSWERER receives transceivers automatically via setRemoteDescription(offer).
+    // This prevents duplicate/mismatched transceivers in Firefox and Safari.
+    if (isOfferer) {
+      const currentAudioTrack = localStreamRef.current?.getAudioTracks()[0] || null;
+      const currentVideoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
 
-    try {
-      pc.addTransceiver(currentAudioTrack || 'audio', { direction: 'sendrecv' });
-      pc.addTransceiver(currentVideoTrack || 'video', { direction: 'sendrecv' });
-    } catch (e) {
-      console.warn(`[WebRTC] Transceiver pre-allocation warning for ${peerId}:`, e);
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => {
-          pc.addTrack(track, localStreamRef.current);
-        });
+      try {
+        pc.addTransceiver(currentAudioTrack || 'audio', { direction: 'sendrecv' });
+        pc.addTransceiver(currentVideoTrack || 'video', { direction: 'sendrecv' });
+      } catch (e) {
+        console.warn(`[WebRTC] Transceiver pre-allocation warning for ${peerId}:`, e);
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(track => {
+            pc.addTrack(track, localStreamRef.current);
+          });
+        }
       }
     }
 
@@ -119,11 +154,19 @@ export function useWebRTC(socket, roomId, userName) {
       };
     };
 
+    // Serialize ICE candidates cleanly for cross-browser transmission
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        const candidatePayload = event.candidate.toJSON ? event.candidate.toJSON() : {
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          usernameFragment: event.candidate.usernameFragment
+        };
+
         socket?.emit('webrtc-ice-candidate', {
           target: peerId,
-          candidate: event.candidate,
+          candidate: candidatePayload,
           type: 'media'
         });
       }
@@ -131,9 +174,9 @@ export function useWebRTC(socket, roomId, userName) {
 
     pc.oniceconnectionstatechange = () => {
       console.log(`[WebRTC] ICE Connection State (${peerId}): ${pc.iceConnectionState}`);
+      setIceConnectionStatus(pc.iceConnectionState);
       if (pc.iceConnectionState === 'failed') {
-        console.warn(`[WebRTC] ICE failed with ${peerId}, attempting ICE restart`);
-        pc.restartIce();
+        console.warn(`[WebRTC] ICE failed with ${peerId}. Symmetric NAT / firewall traversal requires TURN relay.`);
       }
     };
 
@@ -167,9 +210,9 @@ export function useWebRTC(socket, roomId, userName) {
     }
   }, [socket]);
 
-  // Helper to initiate connection to a newly discovered peer
+  // Helper to initiate connection to a newly discovered peer (this client is the offerer)
   const initiateConnection = useCallback(async (peerId) => {
-    const pc = createPeerConnection(peerId);
+    const pc = createPeerConnection(peerId, true);
     await sendOfferToPeer(peerId, pc);
   }, [createPeerConnection, sendOfferToPeer]);
 
@@ -419,16 +462,23 @@ export function useWebRTC(socket, roomId, userName) {
             if (screenPeerConnections.current[peerId]) {
               screenPeerConnections.current[peerId].close();
             }
-            const screenPC = new RTCPeerConnection(RTC_CONFIG);
+            const screenPC = new RTCPeerConnection(iceConfigRef.current);
             screenPeerConnections.current[peerId] = screenPC;
 
             stream.getTracks().forEach(t => screenPC.addTrack(t, stream));
 
             screenPC.onicecandidate = (event) => {
               if (event.candidate) {
+                const candidatePayload = event.candidate.toJSON ? event.candidate.toJSON() : {
+                  candidate: event.candidate.candidate,
+                  sdpMid: event.candidate.sdpMid,
+                  sdpMLineIndex: event.candidate.sdpMLineIndex,
+                  usernameFragment: event.candidate.usernameFragment
+                };
+
                 socket?.emit('webrtc-ice-candidate', {
                   target: peerId,
-                  candidate: event.candidate,
+                  candidate: candidatePayload,
                   type: 'screen'
                 });
               }
@@ -463,7 +513,8 @@ export function useWebRTC(socket, roomId, userName) {
           if (u.mediaState) {
             states[u.id] = u.mediaState;
           }
-          createPeerConnection(u.id);
+          // The newly joining user does not initiate offers to existing users;
+          // existing users will initiate offers via handleUserJoined.
         }
       });
       setPeerMediaStates(prev => ({ ...prev, ...states }));
@@ -482,16 +533,21 @@ export function useWebRTC(socket, roomId, userName) {
       // If this user is actively screen sharing, negotiate screen feed to new peer
       if (isScreenSharingRef.current && screenStreamRef.current) {
         try {
-          const screenPC = new RTCPeerConnection(RTC_CONFIG);
+          const screenPC = new RTCPeerConnection(iceConfigRef.current);
           screenPeerConnections.current[userData.id] = screenPC;
 
           screenStreamRef.current.getTracks().forEach(t => screenPC.addTrack(t, screenStreamRef.current));
 
           screenPC.onicecandidate = (event) => {
             if (event.candidate) {
+              const candidatePayload = event.candidate.toJSON ? event.candidate.toJSON() : {
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+              };
               socket.emit('webrtc-ice-candidate', {
                 target: userData.id,
-                candidate: event.candidate,
+                candidate: candidatePayload,
                 type: 'screen'
               });
             }
@@ -521,7 +577,7 @@ export function useWebRTC(socket, roomId, userName) {
           if (screenPeerConnections.current[caller]) {
             screenPeerConnections.current[caller].close();
           }
-          const screenPC = new RTCPeerConnection(RTC_CONFIG);
+          const screenPC = new RTCPeerConnection(iceConfigRef.current);
           screenPeerConnections.current[caller] = screenPC;
 
           screenPC.ontrack = (event) => {
@@ -536,9 +592,14 @@ export function useWebRTC(socket, roomId, userName) {
 
           screenPC.onicecandidate = (event) => {
             if (event.candidate) {
+              const candidatePayload = event.candidate.toJSON ? event.candidate.toJSON() : {
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+              };
               socket.emit('webrtc-ice-candidate', {
                 target: caller,
-                candidate: event.candidate,
+                candidate: candidatePayload,
                 type: 'screen'
               });
             }
@@ -548,7 +609,9 @@ export function useWebRTC(socket, roomId, userName) {
 
           if (screenIceCandidateQueues.current[caller]) {
             for (const cand of screenIceCandidateQueues.current[caller]) {
-              await screenPC.addIceCandidate(cand).catch(() => {});
+              if (cand && cand.candidate) {
+                await screenPC.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+              }
             }
             screenIceCandidateQueues.current[caller] = [];
           }
@@ -562,7 +625,8 @@ export function useWebRTC(socket, roomId, userName) {
             type: 'screen'
           });
         } else {
-          const pc = createPeerConnection(caller);
+          // As answerer, do NOT add duplicate transceivers before setRemoteDescription
+          const pc = createPeerConnection(caller, false);
 
           // Handle offer collision (glare)
           const isCollision = makingOffer.current[caller] || pc.signalingState !== 'stable';
@@ -575,9 +639,25 @@ export function useWebRTC(socket, roomId, userName) {
 
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
+          // If answerer already has local tracks active, attach them to the transceivers created by setRemoteDescription
+          if (localStreamRef.current) {
+            const audioTrack = localStreamRef.current.getAudioTracks()[0];
+            const videoTrack = localStreamRef.current.getVideoTracks()[0];
+            if (audioTrack) {
+              const aSender = pc.getSenders().find(s => s.track?.kind === 'audio' || s.kind === 'audio');
+              if (aSender) aSender.replaceTrack(audioTrack).catch(() => {});
+            }
+            if (videoTrack) {
+              const vSender = pc.getSenders().find(s => s.track?.kind === 'video' || s.kind === 'video');
+              if (vSender) vSender.replaceTrack(videoTrack).catch(() => {});
+            }
+          }
+
           if (iceCandidateQueues.current[caller]) {
             for (const cand of iceCandidateQueues.current[caller]) {
-              await pc.addIceCandidate(cand).catch(() => {});
+              if (cand && cand.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+              }
             }
             iceCandidateQueues.current[caller] = [];
           }
@@ -613,7 +693,9 @@ export function useWebRTC(socket, roomId, userName) {
 
           if (queue) {
             for (const cand of queue) {
-              await pc.addIceCandidate(cand).catch(() => {});
+              if (cand && cand.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+              }
             }
             if (type === 'screen') screenIceCandidateQueues.current[responder] = [];
             else iceCandidateQueues.current[responder] = [];
@@ -627,12 +709,16 @@ export function useWebRTC(socket, roomId, userName) {
     // Received ICE Candidate
     const handleIceCandidate = async ({ sender, candidate, type }) => {
       try {
+        if (!candidate || !candidate.candidate) return;
+
         const pc = type === 'screen'
           ? screenPeerConnections.current[sender]
           : peerConnections.current[sender];
 
         if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-          await pc.addIceCandidate(candidate).catch(() => {});
+          await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {
+            console.warn('[WebRTC] addIceCandidate error:', e);
+          });
         } else {
           const queues = type === 'screen' ? screenIceCandidateQueues.current : iceCandidateQueues.current;
           if (!queues[sender]) queues[sender] = [];
@@ -722,6 +808,7 @@ export function useWebRTC(socket, roomId, userName) {
     isMicActive,
     isScreenSharing,
     screenPresenter,
+    iceConnectionStatus,
     toggleCamera,
     toggleMic,
     toggleScreenShare

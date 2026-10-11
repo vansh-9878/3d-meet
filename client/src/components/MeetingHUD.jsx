@@ -47,7 +47,8 @@ export function MeetingHUD({
   isScreenSharing = false,
   onToggleScreenShare = () => {},
   screenPresenter = null,
-  activeSpeakerCount = 0
+  activeSpeakerCount = 0,
+  iceConnectionStatus = 'new'
 }) {
   const [showControlsHint, setShowControlsHint] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -136,6 +137,30 @@ export function MeetingHUD({
               <span>{participantCount} {participantCount === 1 ? 'person' : 'people'} in room</span>
               <span className="text-gray-300">•</span>
               <span className="text-gray-800">You: <strong className="text-blue-700">{userName}</strong></span>
+              {participantCount > 1 && (
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${
+                    iceConnectionStatus === 'connected' || iceConnectionStatus === 'completed'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : iceConnectionStatus === 'failed'
+                      ? 'bg-red-50 text-red-700 border-red-300'
+                      : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'
+                  }`}
+                  title={
+                    iceConnectionStatus === 'connected' || iceConnectionStatus === 'completed'
+                      ? 'P2P WebRTC Connected'
+                      : iceConnectionStatus === 'failed'
+                      ? 'Direct P2P blocked by firewall / symmetric NAT. TURN relay server required for cross-network connectivity.'
+                      : 'Negotiating P2P connection...'
+                  }
+                >
+                  {iceConnectionStatus === 'connected' || iceConnectionStatus === 'completed'
+                    ? '● P2P Live'
+                    : iceConnectionStatus === 'failed'
+                    ? '▲ P2P Blocked'
+                    : '○ Connecting...'}
+                </span>
+              )}
               {isMicActive && (
                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 animate-pulse border border-emerald-300">
                   Speaking

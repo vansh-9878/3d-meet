@@ -27,6 +27,48 @@ app.get('/api/rooms', (req, res) => {
   res.json({ rooms: roomSummaries });
 });
 
+// Provide dynamic ICE servers (STUN + optional TURN) to connecting clients
+app.get('/api/ice-servers', async (req, res) => {
+  const defaultIceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.nextcloud.com:443' }
+  ];
+
+  const meteredApiKey = process.env.METERED_API_KEY;
+  const meteredAppName = process.env.METERED_APP_NAME;
+
+  if (meteredApiKey) {
+    try {
+      const url = meteredAppName
+        ? `https://${meteredAppName}.metered.live/api/v1/turn/credentials?apiKey=${meteredApiKey}`
+        : `https://relay.metered.ca/api/v1/turn/credentials?apiKey=${meteredApiKey}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const iceServers = await response.json();
+        return res.json({ iceServers });
+      }
+    } catch (err) {
+      console.warn('[Server] Error fetching Metered TURN credentials:', err.message);
+    }
+  }
+
+  if (process.env.TURN_URL) {
+    defaultIceServers.push({
+      urls: process.env.TURN_URL,
+      username: process.env.TURN_USERNAME || '',
+      credential: process.env.TURN_CREDENTIAL || ''
+    });
+  }
+
+  res.json({ iceServers: defaultIceServers });
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
