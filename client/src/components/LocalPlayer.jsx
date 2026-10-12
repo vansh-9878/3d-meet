@@ -125,7 +125,7 @@ export function LocalPlayer({
       }
     };
 
-    if (isCursorFree && document.pointerLockElement === canvas) {
+    if ((isCursorFree || viewMode === 'presentation') && document.pointerLockElement === canvas) {
       document.exitPointerLock?.();
     } else if (!isCursorFree && viewMode !== 'presentation' && document.pointerLockElement !== canvas) {
       pointer.set(0, 0);

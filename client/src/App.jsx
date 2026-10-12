@@ -73,6 +73,11 @@ export default function App() {
   useEffect(() => { avatarConfigRef.current = avatarConfig; }, [avatarConfig]);
   useEffect(() => { userNameRef.current = userName; }, [userName]);
   useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
+  useEffect(() => {
+    if (viewMode === 'presentation') {
+      setIsCursorFree(true);
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     const s = io(SOCKET_SERVER_URL, {
@@ -529,7 +534,12 @@ export default function App() {
           }
         }}
         viewMode={viewMode}
-        onChangeViewMode={(mode) => setViewMode(mode)}
+        onChangeViewMode={(mode) => {
+          setViewMode(mode);
+          if (mode === 'presentation') {
+            setIsCursorFree(true);
+          }
+        }}
         onOpenCustomizer={() => {
           setIsCursorFree(true);
           setIsCustomizerOpen(true);

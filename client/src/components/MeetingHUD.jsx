@@ -102,6 +102,28 @@ export function MeetingHUD({
     onReaction('confetti');
   };
 
+  // When in Presentation View: remove all other buttons that block the TV screen,
+  // keeping ONLY ONE clean button to exit presentation mode.
+  if (viewMode === 'presentation') {
+    return (
+      <div className="pointer-events-none select-none absolute inset-0 flex flex-col justify-start items-center p-6 z-40">
+        <div className="pointer-events-auto mt-2">
+          <button
+            onClick={() => onChangeViewMode('fpp')}
+            className="flex items-center gap-2.5 px-6 py-3.5 bg-white/95 hover:bg-white text-black font-extrabold text-sm rounded-2xl shadow-2xl border-2 border-indigo-600 transition-all active:scale-95 backdrop-blur-md ring-4 ring-indigo-500/25 cursor-pointer"
+            title="Exit Presentation View (Return to Character)"
+          >
+            <Tv className="w-5 h-5 text-indigo-600" />
+            <span className="text-black">Exit Presentation View</span>
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-900 ml-1">
+              Return to Character
+            </span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none select-none absolute inset-0 flex flex-col justify-between p-6 z-40">
       {/* Top Header Bar */}
@@ -162,8 +184,8 @@ export function MeetingHUD({
                 </span>
               )}
               {isMicActive && (
-                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 animate-pulse border border-emerald-300">
-                  Speaking
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200 text-black animate-pulse border border-emerald-400">
+                  Unmuted
                 </span>
               )}
             </div>
@@ -298,13 +320,15 @@ export function MeetingHUD({
             onClick={onToggleMic}
             className={`flex items-center gap-2 px-3.5 py-3 rounded-xl transition-all font-semibold ${
               isMicActive
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30'
+                ? 'bg-emerald-400 hover:bg-emerald-300 text-black shadow-md shadow-emerald-500/30 border border-emerald-500'
                 : 'bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200'
             }`}
             title={isMicActive ? 'Mute Microphone' : 'Unmute Microphone & Speak'}
           >
-            {isMicActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-            <span className="text-xs font-bold">{isMicActive ? 'Speaking' : 'Muted'}</span>
+            {isMicActive ? <Mic className="w-5 h-5 text-black" /> : <MicOff className="w-5 h-5" />}
+            <span className={`text-xs font-extrabold ${isMicActive ? 'text-black' : ''}`}>
+              {isMicActive ? 'Unmuted' : 'Muted'}
+            </span>
           </button>
 
           {/* Camera Toggle */}
@@ -312,13 +336,15 @@ export function MeetingHUD({
             onClick={onToggleCam}
             className={`flex items-center gap-2 px-3.5 py-3 rounded-xl transition-all font-semibold ${
               isCamActive
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30'
+                ? 'bg-emerald-400 hover:bg-emerald-300 text-black shadow-md shadow-emerald-500/30 border border-emerald-500'
                 : 'bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200'
             }`}
             title={isCamActive ? 'Turn Off Camera' : 'Turn On Camera (Live Head Viewport)'}
           >
-            {isCamActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-            <span className="text-xs font-bold">{isCamActive ? 'Camera On' : 'Camera Off'}</span>
+            {isCamActive ? <Video className="w-5 h-5 text-black" /> : <VideoOff className="w-5 h-5" />}
+            <span className={`text-xs font-extrabold ${isCamActive ? 'text-black' : ''}`}>
+              {isCamActive ? 'Camera On' : 'Camera Off'}
+            </span>
           </button>
 
           {/* Screen Share Button */}
