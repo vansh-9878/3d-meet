@@ -64,6 +64,16 @@ export default function App() {
     toggleScreenShare
   } = useWebRTC(socket, roomId, userName);
 
+  const hasEnteredRef = useRef(false);
+  const avatarConfigRef = useRef(avatarConfig);
+  const userNameRef = useRef(userName);
+  const roomIdRef = useRef(roomId);
+
+  useEffect(() => { hasEnteredRef.current = hasEntered; }, [hasEntered]);
+  useEffect(() => { avatarConfigRef.current = avatarConfig; }, [avatarConfig]);
+  useEffect(() => { userNameRef.current = userName; }, [userName]);
+  useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
+
   useEffect(() => {
     const s = io(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling']
@@ -71,6 +81,18 @@ export default function App() {
 
     s.on('connect', () => {
       console.log(`[Socket Connected] Connected to server at ${SOCKET_SERVER_URL} (ID: ${s.id})`);
+      if (hasEnteredRef.current) {
+        const activeRoom = (roomIdRef.current && roomIdRef.current.trim()) ? roomIdRef.current.trim().toLowerCase() : 'main-office';
+        s.emit('join-room', {
+          roomId: activeRoom,
+          user: {
+            name: userNameRef.current,
+            avatarConfig: avatarConfigRef.current,
+            position: [0, 0, 5.0],
+            rotation: Math.PI
+          }
+        });
+      }
     });
 
     // Received participant list for the current room

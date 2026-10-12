@@ -96,8 +96,12 @@ export function AvatarVideoHead({
     video.srcObject = videoStream;
 
     const setupTexture = () => {
-      if (!textureRef.current && videoRef.current) {
-        const tex = new THREE.VideoTexture(videoRef.current);
+      const v = videoRef.current;
+      if (!v || v.readyState < 2 || v.videoWidth === 0) {
+        return;
+      }
+      if (!textureRef.current) {
+        const tex = new THREE.VideoTexture(v);
         tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
         tex.format = THREE.RGBAFormat;
@@ -106,18 +110,21 @@ export function AvatarVideoHead({
 
         applyZoomToTexture(tex, zoom, isLocal);
         textureRef.current = tex;
-      } else if (textureRef.current) {
+      } else {
         applyZoomToTexture(textureRef.current, zoom, isLocal);
       }
       setHasValidVideo(true);
     };
 
     const onVideoReady = () => {
-      setupTexture();
+      const v = videoRef.current;
+      if (v && v.readyState >= 2 && v.videoWidth > 0) {
+        setupTexture();
+      }
     };
 
     video.addEventListener('loadedmetadata', () => {
-      video.play().then(setupTexture).catch(e => console.warn('Avatar video play error:', e));
+      video.play().then(onVideoReady).catch(e => console.warn('Avatar video play error:', e));
     });
     video.addEventListener('loadeddata', onVideoReady);
     video.addEventListener('playing', onVideoReady);
@@ -180,9 +187,23 @@ export function AvatarVideoHead({
 
   // Keep VideoTexture continuously updated with latest camera frames
   useFrame(() => {
-    if (isCamActive && textureRef.current && videoRef.current) {
-      if (videoRef.current.readyState >= videoRef.current.HAVE_CURRENT_DATA) {
-        textureRef.current.needsUpdate = true;
+    if (isCamActive && videoRef.current) {
+      const v = videoRef.current;
+      if (v.readyState >= 2 && v.videoWidth > 0) {
+        if (!textureRef.current) {
+          const tex = new THREE.VideoTexture(v);
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.format = THREE.RGBAFormat;
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.generateMipmaps = false;
+          applyZoomToTexture(tex, zoom, isLocal);
+          textureRef.current = tex;
+          setHasValidVideo(true);
+        } else {
+          textureRef.current.needsUpdate = true;
+          if (!hasValidVideo) setHasValidVideo(true);
+        }
       }
     }
   });

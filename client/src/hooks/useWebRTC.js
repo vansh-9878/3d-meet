@@ -329,11 +329,16 @@ export function useWebRTC(socket, roomId, userName) {
         // Stream video immediately across all existing peer connections
         for (const [peerId, pc] of Object.entries(peerConnections.current)) {
           try {
-            const videoSender = pc.getSenders().find(s => s.track?.kind === 'video' || s.kind === 'video')
-              || pc.getTransceivers().find(t => t.receiver?.track?.kind === 'video')?.sender;
-            if (videoSender) {
-              await videoSender.replaceTrack(newVideoTrack);
+            const vTransceiver = pc.getTransceivers().find(t => 
+              t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+            );
+            if (vTransceiver) {
+              vTransceiver.direction = 'sendrecv';
+              await vTransceiver.sender.replaceTrack(newVideoTrack);
               console.log(`[WebRTC] Replaced video track with active camera on peer ${peerId}`);
+              if (vTransceiver.currentDirection !== 'sendrecv') {
+                await sendOfferToPeer(peerId, pc);
+              }
             } else {
               pc.addTrack(newVideoTrack, localStreamRef.current);
               await sendOfferToPeer(peerId, pc);
@@ -423,11 +428,16 @@ export function useWebRTC(socket, roomId, userName) {
         // Stream audio immediately across all existing peer connections
         for (const [peerId, pc] of Object.entries(peerConnections.current)) {
           try {
-            const audioSender = pc.getSenders().find(s => s.track?.kind === 'audio' || s.kind === 'audio')
-              || pc.getTransceivers().find(t => t.receiver?.track?.kind === 'audio')?.sender;
-            if (audioSender) {
-              await audioSender.replaceTrack(newAudioTrack);
+            const aTransceiver = pc.getTransceivers().find(t => 
+              t.receiver?.track?.kind === 'audio' || t.sender?.track?.kind === 'audio'
+            );
+            if (aTransceiver) {
+              aTransceiver.direction = 'sendrecv';
+              await aTransceiver.sender.replaceTrack(newAudioTrack);
               console.log(`[WebRTC] Replaced audio track with active mic on peer ${peerId}`);
+              if (aTransceiver.currentDirection !== 'sendrecv') {
+                await sendOfferToPeer(peerId, pc);
+              }
             } else {
               pc.addTrack(newAudioTrack, localStreamRef.current);
               await sendOfferToPeer(peerId, pc);
@@ -683,17 +693,32 @@ export function useWebRTC(socket, roomId, userName) {
 
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
+          // Explicitly configure all transceivers on answerer to 'sendrecv' so bidirectional media is allowed
+          pc.getTransceivers().forEach(transceiver => {
+            transceiver.direction = 'sendrecv';
+          });
+
           // If answerer already has local tracks active, attach them to the transceivers created by setRemoteDescription
           if (localStreamRef.current) {
             const audioTrack = localStreamRef.current.getAudioTracks()[0];
             const videoTrack = localStreamRef.current.getVideoTracks()[0];
             if (audioTrack) {
-              const aSender = pc.getSenders().find(s => s.track?.kind === 'audio' || s.kind === 'audio');
-              if (aSender) aSender.replaceTrack(audioTrack).catch(() => {});
+              const aTransceiver = pc.getTransceivers().find(t => 
+                t.receiver?.track?.kind === 'audio' || t.sender?.track?.kind === 'audio'
+              );
+              if (aTransceiver) {
+                aTransceiver.direction = 'sendrecv';
+                await aTransceiver.sender.replaceTrack(audioTrack).catch(() => {});
+              }
             }
             if (videoTrack) {
-              const vSender = pc.getSenders().find(s => s.track?.kind === 'video' || s.kind === 'video');
-              if (vSender) vSender.replaceTrack(videoTrack).catch(() => {});
+              const vTransceiver = pc.getTransceivers().find(t => 
+                t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+              );
+              if (vTransceiver) {
+                vTransceiver.direction = 'sendrecv';
+                await vTransceiver.sender.replaceTrack(videoTrack).catch(() => {});
+              }
             }
           }
 
