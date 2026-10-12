@@ -453,8 +453,13 @@ export function useWebRTC(socket, roomId, userName) {
     }
   }, [isMicActive, socket, sendOfferToPeer]);
 
-  // 3. Screen Sharing (Cast to Conference TV Wall)
+  // 3. Screen Sharing (Cast to Conference TV Wall - Exclusivity: 1 presenter max)
   const toggleScreenShare = useCallback(async () => {
+    if (!isScreenSharing && screenPresenter && screenPresenter.presenterId !== socket?.id) {
+      alert(`Screen sharing is currently in use by ${screenPresenter.presenterName || 'another participant'}. Only one person can share at a time.`);
+      return;
+    }
+
     if (isScreenSharing) {
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(t => t.stop());
@@ -556,7 +561,10 @@ export function useWebRTC(socket, roomId, userName) {
     if (!socket) return;
 
     // Room participants list when this user joins
-    const handleRoomUsers = ({ users, iceServers }) => {
+    const handleRoomUsers = ({ users, iceServers, screenPresenter: initialPresenter }) => {
+      if (initialPresenter) {
+        setScreenPresenter(initialPresenter);
+      }
       if (iceServers && iceServers.length > 0) {
         console.log('[WebRTC] Ingested ICE servers directly from room-users event:', iceServers.length);
         iceConfigRef.current = { iceServers };

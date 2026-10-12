@@ -19,7 +19,8 @@ import {
   Check,
   MonitorUp,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Smile
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -27,6 +28,7 @@ export function MeetingHUD({
   roomId = 'main-office',
   participantCount = 1,
   userName = '',
+  currentSocketId = null,
   isSitting = false,
   currentSeatName = '',
   onToggleSit = () => {},
@@ -48,9 +50,13 @@ export function MeetingHUD({
   onToggleScreenShare = () => {},
   screenPresenter = null,
   activeSpeakerCount = 0,
-  iceConnectionStatus = 'new'
+  iceConnectionStatus = 'new',
+  onThrowProjectile = () => {},
+  onSendEmoji = () => {},
+  hoveredSeatInfo = null
 }) {
   const [showControlsHint, setShowControlsHint] = useState(true);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const previewVideoRef = useRef(null);
 
@@ -347,19 +353,45 @@ export function MeetingHUD({
             </span>
           </button>
 
-          {/* Screen Share Button */}
-          <button
-            onClick={onToggleScreenShare}
-            className={`flex items-center gap-2 px-3.5 py-3 rounded-xl transition-all font-semibold ${
-              isScreenSharing
-                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 animate-pulse'
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300'
-            }`}
-            title={isScreenSharing ? 'Stop Screen Sharing' : 'Share Screen (Cast to Presentation TV)'}
-          >
-            <MonitorUp className="w-5 h-5" />
-            <span className="text-xs font-bold">{isScreenSharing ? 'Sharing Screen' : 'Share Screen'}</span>
-          </button>
+          {/* Screen Share Button (Exclusivity: only one person can share at a time) */}
+          {(() => {
+            const isAnotherPresenter = screenPresenter && screenPresenter.presenterId !== currentSocketId;
+            return (
+              <button
+                onClick={() => {
+                  if (isAnotherPresenter) {
+                    alert(`Screen sharing is currently in use by ${screenPresenter.presenterName}. Only one person can share at a time.`);
+                    return;
+                  }
+                  onToggleScreenShare();
+                }}
+                disabled={isAnotherPresenter && !isScreenSharing}
+                className={`flex items-center gap-2 px-3.5 py-3 rounded-xl transition-all font-semibold ${
+                  isScreenSharing
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 animate-pulse'
+                    : isAnotherPresenter
+                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300'
+                }`}
+                title={
+                  isScreenSharing
+                    ? 'Stop Screen Sharing'
+                    : isAnotherPresenter
+                    ? `Screen share in use by ${screenPresenter.presenterName} (1 presenter max)`
+                    : 'Share Screen (Cast to Presentation TV)'
+                }
+              >
+                <MonitorUp className="w-5 h-5" />
+                <span className="text-xs font-bold">
+                  {isScreenSharing
+                    ? 'Sharing Screen'
+                    : isAnotherPresenter
+                    ? `In Use (${screenPresenter.presenterName})`
+                    : 'Share Screen'}
+                </span>
+              </button>
+            );
+          })()}
 
           <div className="w-[1px] h-7 bg-gray-200 mx-1" />
 
@@ -385,6 +417,8 @@ export function MeetingHUD({
             </span>
           </button>
 
+          <div className="w-[1px] h-7 bg-gray-200 mx-1" />
+
           {/* Confetti / Celebration */}
           <button
             onClick={triggerConfetti}
@@ -393,6 +427,73 @@ export function MeetingHUD({
           >
             <Sparkles className="w-5 h-5" />
           </button>
+
+          {/* Projectile Throw Buttons (Tomato, Egg, Water Balloon) */}
+          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 p-1 rounded-xl">
+            {/* Tomato */}
+            <button
+              onClick={() => onThrowProjectile('tomato')}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              title="Throw Tomato at Crosshair Target"
+            >
+              <span className="text-base">🍅</span>
+              <span className="text-[11px] font-extrabold text-red-700 hidden sm:inline">Tomato</span>
+            </button>
+
+            {/* Egg */}
+            <button
+              onClick={() => onThrowProjectile('egg')}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              title="Throw Egg at Crosshair Target"
+            >
+              <span className="text-base">🥚</span>
+              <span className="text-[11px] font-extrabold text-yellow-800 hidden sm:inline">Egg</span>
+            </button>
+
+            {/* Water Balloon */}
+            <button
+              onClick={() => onThrowProjectile('water_balloon')}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-sky-50 text-sky-600 border border-sky-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              title="Throw Water Balloon at Crosshair Target"
+            >
+              <span className="text-base">💧</span>
+              <span className="text-[11px] font-extrabold text-sky-700 hidden sm:inline">Balloon</span>
+            </button>
+          </div>
+
+          {/* Emoji Reaction Tray Toggle */}
+          <div className="relative">
+            <button
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
+              className={`p-3 rounded-xl border transition-all active:scale-90 ${
+                showEmojiPicker
+                  ? 'bg-amber-400 text-black border-amber-500 shadow-md ring-2 ring-amber-300'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200'
+              }`}
+              title="React with Emoji Bubble"
+            >
+              <Smile className="w-5 h-5 text-amber-600" />
+            </button>
+
+            {/* Floating Emoji Shelf Popup */}
+            {showEmojiPicker && (
+              <div className="absolute bottom-16 right-0 bg-white/95 backdrop-blur-md border border-gray-300 rounded-2xl shadow-2xl p-2.5 flex items-center gap-2 z-50 animate-fadeIn select-none">
+                {['😀', '😂', '🔥', '❤️', '👍', '🎉', '👏', '😮', '🚀', '💯'].map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      onSendEmoji(emoji);
+                      setShowEmojiPicker(false);
+                    }}
+                    className="text-2xl p-1.5 hover:bg-amber-100 rounded-xl transition-transform hover:scale-125 active:scale-95"
+                    title={`Send ${emoji} Reaction`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="w-[1px] h-7 bg-gray-200 mx-1" />
 

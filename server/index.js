@@ -123,6 +123,8 @@ const io = new Server(server, {
 
 // In-memory room state: roomId -> Map(socketId => participantData)
 const rooms = new Map();
+// Active screen presenter per room: roomId -> { presenterId, presenterName }
+const roomScreenPresenters = new Map();
 
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
@@ -161,14 +163,16 @@ io.on('connection', (socket) => {
     room.set(socket.id, userData);
     socket.data.roomId = activeRoomId;
 
-    // Send the current list of participants + active ICE servers to newly joined player
+    // Send the current list of participants + active ICE servers + active screen presenter to newly joined player
     const participantsList = Array.from(room.values());
     const iceServers = await getIceServers();
+    const activeScreenPresenter = roomScreenPresenters.get(activeRoomId) || null;
 
     socket.emit('room-users', {
       roomId: activeRoomId,
       users: participantsList,
-      iceServers
+      iceServers,
+      screenPresenter: activeScreenPresenter
     });
 
     // Broadcast to other participants in this room that a new user joined
@@ -199,27 +203,49 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Chair sit/stand action
+  // Chair sit/stand action (Exclusivity: no 2 people can sit on the same seat)
   socket.on('player-sit', (data) => {
     const roomId = socket.data.roomId;
     if (!roomId || !rooms.has(roomId)) return;
 
     const room = rooms.get(roomId);
     const user = room.get(socket.id);
-    if (user) {
-      user.state = data.isSitting ? 'sitting' : 'idle';
-      user.seatId = data.seatId || null;
+    if (!user) return;
+
+    if (data.isSitting && data.seatId) {
+      // Check if another participant is already sitting on this seat
+      let occupiedByName = null;
+      for (const [id, participant] of room.entries()) {
+        if (id !== socket.id && participant.seatId === data.seatId) {
+          occupiedByName = participant.name || 'Another participant';
+          break;
+        }
+      }
+
+      if (occupiedByName) {
+        socket.emit('seat-error', {
+          seatId: data.seatId,
+          message: `Seat is already occupied by ${occupiedByName}!`
+        });
+        return;
+      }
+
+      user.state = 'sitting';
+      user.seatId = data.seatId;
       if (data.position) user.position = data.position;
       if (data.rotation !== undefined) user.rotation = data.rotation;
-
-      io.in(roomId).emit('player-sat', {
-        id: socket.id,
-        isSitting: data.isSitting,
-        seatId: data.seatId,
-        position: user.position,
-        rotation: user.rotation
-      });
+    } else {
+      user.state = 'idle';
+      user.seatId = null;
     }
+
+    io.in(roomId).emit('player-sat', {
+      id: socket.id,
+      isSitting: user.state === 'sitting',
+      seatId: user.seatId,
+      position: user.position,
+      rotation: user.rotation
+    });
   });
 
   // Avatar customization change
@@ -302,24 +328,82 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Presentation TV: Screen Sharing broadcast
+  // Presentation TV: Screen Sharing broadcast (Exclusivity: only one person can share at a time)
   socket.on('screen-share-started', (data) => {
     const roomId = socket.data.roomId;
-    if (roomId) {
-      socket.to(roomId).emit('screen-share-started', {
-        presenterId: socket.id,
-        presenterName: data?.presenterName || 'Presenter'
+    if (!roomId) return;
+
+    const currentPresenter = roomScreenPresenters.get(roomId);
+    if (currentPresenter && currentPresenter.presenterId !== socket.id) {
+      socket.emit('screen-share-error', {
+        message: `Screen share is already in use by ${currentPresenter.presenterName || 'another participant'}.`
       });
+      return;
     }
+
+    const presenterInfo = {
+      presenterId: socket.id,
+      presenterName: data?.presenterName || 'Presenter'
+    };
+    roomScreenPresenters.set(roomId, presenterInfo);
+
+    socket.to(roomId).emit('screen-share-started', presenterInfo);
   });
 
   socket.on('screen-share-stopped', () => {
     const roomId = socket.data.roomId;
     if (roomId) {
+      const currentPresenter = roomScreenPresenters.get(roomId);
+      if (currentPresenter && currentPresenter.presenterId === socket.id) {
+        roomScreenPresenters.delete(roomId);
+      }
       io.in(roomId).emit('screen-share-stopped', {
         presenterId: socket.id
       });
     }
+  });
+
+  // Projectile Throwing System (Tomato, Egg, Water Balloon)
+  socket.on('throw-projectile', (data) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+
+    const room = rooms.get(roomId);
+    const user = room.get(socket.id);
+
+    const projectileData = {
+      id: `proj-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      type: data.type || 'tomato', // 'tomato' | 'egg' | 'water_balloon'
+      origin: data.origin,
+      target: data.target,
+      hitType: data.hitType || 'environment', // 'player' | 'environment'
+      hitPlayerId: data.hitPlayerId || null,
+      hitPoint: data.hitPoint || data.target,
+      hitNormal: data.hitNormal || [0, 1, 0],
+      throwerId: socket.id,
+      throwerName: user?.name || 'Someone'
+    };
+
+    io.in(roomId).emit('projectile-thrown', projectileData);
+
+    // If thrown directly on a player, notify that specific player to trigger screen splatter effect
+    if (data.hitType === 'player' && data.hitPlayerId) {
+      io.to(data.hitPlayerId).emit('player-splattered', {
+        type: data.type || 'tomato',
+        throwerName: user?.name || 'Someone'
+      });
+    }
+  });
+
+  // 3D Avatar Emoji Bubble Broadcast
+  socket.on('send-emoji', (data) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    io.in(roomId).emit('player-emoji', {
+      id: socket.id,
+      emoji: data.emoji,
+      timestamp: Date.now()
+    });
   });
 
   // Reaction / Emote broadcast
@@ -339,9 +423,20 @@ io.on('connection', (socket) => {
     if (roomId && rooms.has(roomId)) {
       const room = rooms.get(roomId);
       const user = room.get(socket.id);
+
+      // Clean up screen share if this socket was the active presenter
+      const activePresenter = roomScreenPresenters.get(roomId);
+      if (activePresenter && activePresenter.presenterId === socket.id) {
+        roomScreenPresenters.delete(roomId);
+        io.in(roomId).emit('screen-share-stopped', {
+          presenterId: socket.id
+        });
+      }
+
       room.delete(socket.id);
       if (room.size === 0) {
         rooms.delete(roomId);
+        roomScreenPresenters.delete(roomId);
       } else {
         io.in(roomId).emit('user-left', socket.id);
       }

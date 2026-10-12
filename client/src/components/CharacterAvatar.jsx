@@ -15,7 +15,8 @@ export function CharacterAvatar({
   hideModelInFpp = false,
   videoStream = null,
   isCamActive = false,
-  camZoom = 1.2
+  camZoom = 1.2,
+  activeEmoji = null
 }) {
   const groupRef = useRef();
   const rootPelvisRef = useRef();
@@ -314,6 +315,15 @@ export function CharacterAvatar({
         <group position={[0, state === 'sitting' ? 2.25 : 2.55, 0]}>
           <Html center distanceFactor={14}>
             <div className="flex flex-col items-center pointer-events-none select-none">
+              {/* Floating 3D Emoji Speech Bubble (Displayed for 2-3 seconds) */}
+              {activeEmoji && (
+                <div className="relative mb-2 px-3 py-1 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border-2 border-amber-400 text-3xl animate-bounce flex items-center justify-center transform -translate-y-1">
+                  <span>{activeEmoji}</span>
+                  {/* Bubble tail pointing down towards head */}
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-r-2 border-b-2 border-amber-400 rotate-45" />
+                </div>
+              )}
+
               <div
                 className={`px-3 py-1 rounded-full text-xs font-bold shadow-lg flex items-center gap-1.5 transition-all duration-300 ${
                   isSpeaking

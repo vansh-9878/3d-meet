@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { ContactShadows } from '@react-three/drei';
 import { io } from 'socket.io-client';
@@ -9,6 +9,8 @@ import { LocalPlayer } from './components/LocalPlayer';
 import { RemotePlayer } from './components/RemotePlayer';
 import { AvatarCustomizer, AVATAR_PRESETS } from './components/AvatarCustomizer';
 import { MeetingHUD } from './components/MeetingHUD';
+import { SplatterOverlay } from './components/SplatterOverlay';
+import { ProjectileSystem } from './components/ProjectileSystem';
 import { useWebRTC } from './hooks/useWebRTC';
 
 // Dynamically determine the socket URL:
@@ -42,6 +44,21 @@ export default function App() {
 
   // Seating state
   const [currentSeat, setCurrentSeat] = useState(null);
+
+  // Seat Crosshair Hovering
+  const [hoveredSeatId, setHoveredSeatId] = useState(null);
+  const [hoveredSeatOccupied, setHoveredSeatOccupied] = useState(false);
+
+  // Projectiles & Puddles
+  const [activeProjectiles, setActiveProjectiles] = useState([]);
+  const [puddles, setPuddles] = useState([]);
+  const projectileSystemRef = useRef(null);
+
+  // Screen Splatter on Impact (2-4 seconds)
+  const [splatterData, setSplatterData] = useState(null);
+
+  // Local Emoji Bubble (2-3 seconds)
+  const [localEmoji, setLocalEmoji] = useState(null);
 
   // Network state
   const [socket, setSocket] = useState(null);
@@ -189,6 +206,57 @@ export default function App() {
       });
     });
 
+    // Projectile Thrown by anyone in room (Tomato, Egg, Water Balloon)
+    s.on('projectile-thrown', (data) => {
+      setActiveProjectiles((prev) => [...prev, { ...data, startTime: Date.now() }]);
+    });
+
+    // Screen Splatter when hit directly by a projectile
+    s.on('player-splattered', (data) => {
+      setSplatterData({ ...data, timestamp: Date.now() });
+    });
+
+    // 3D Avatar Emoji Bubble
+    s.on('player-emoji', (data) => {
+      if (data.id === s.id) {
+        setLocalEmoji(data.emoji);
+        setTimeout(() => setLocalEmoji(null), 3000);
+      } else {
+        setRemotePlayers((prev) => {
+          if (!prev[data.id]) return prev;
+          return {
+            ...prev,
+            [data.id]: {
+              ...prev[data.id],
+              activeEmoji: data.emoji
+            }
+          };
+        });
+        setTimeout(() => {
+          setRemotePlayers((prev) => {
+            if (!prev[data.id]) return prev;
+            return {
+              ...prev,
+              [data.id]: {
+                ...prev[data.id],
+                activeEmoji: null
+              }
+            };
+          });
+        }, 3000);
+      }
+    });
+
+    // Seat exclusivity error
+    s.on('seat-error', (data) => {
+      alert(data.message || 'This seat is already occupied!');
+    });
+
+    // Screen share exclusivity error
+    s.on('screen-share-error', (data) => {
+      alert(data.message || 'Screen sharing is already in use by another participant.');
+    });
+
     // Teammate left room
     s.on('user-left', (socketId) => {
       setRemotePlayers((prev) => {
@@ -239,11 +307,26 @@ export default function App() {
     }
   };
 
-  // Chair selection handler
+  // Map of occupied seats for exclusivity
+  const occupiedSeatIds = useMemo(() => {
+    const map = {};
+    Object.values(remotePlayers).forEach((player) => {
+      if (player.seatId && player.state === 'sitting') {
+        map[player.seatId] = player.name || 'Occupied';
+      }
+    });
+    return map;
+  }, [remotePlayers]);
+
+  // Chair selection handler (Exclusivity: no 2 people can sit on the same seat)
   const handleSeatSelect = (seat) => {
     if (currentSeat?.id === seat.id) {
       handleStandUp();
     } else {
+      if (occupiedSeatIds[seat.id]) {
+        alert(`This seat is already occupied by ${occupiedSeatIds[seat.id]}!`);
+        return;
+      }
       setCurrentSeat(seat);
       if (socket) {
         socket.emit('player-sit', {
@@ -265,6 +348,44 @@ export default function App() {
         seatId: null
       });
     }
+  };
+
+  // Throw projectile (Tomato, Egg, Water Balloon) towards crosshair target
+  const handleThrowProjectile = (type) => {
+    if (!socket || !projectileSystemRef.current) return;
+    const throwData = projectileSystemRef.current.throw(type);
+    if (throwData) {
+      socket.emit('throw-projectile', throwData);
+    }
+  };
+
+  // Send Emoji Reaction (displayed in speech bubble for 2-3 seconds)
+  const handleSendEmoji = (emoji) => {
+    if (!socket) return;
+    socket.emit('send-emoji', { emoji });
+    setLocalEmoji(emoji);
+    setTimeout(() => setLocalEmoji(null), 3000);
+  };
+
+  // Projectile impact handler: cleans up projectile and spawns ground/wall puddle
+  const handleProjectileImpact = (projectile) => {
+    setActiveProjectiles((prev) => prev.filter((p) => p.id !== projectile.id));
+
+    if (projectile.hitType === 'environment' && (projectile.hitPoint || projectile.target)) {
+      const puddle = {
+        id: `puddle-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        type: projectile.type,
+        position: projectile.hitPoint || projectile.target,
+        hitNormal: projectile.hitNormal || [0, 1, 0],
+        createdAt: Date.now()
+      };
+      setPuddles((prev) => [...prev, puddle]);
+    }
+  };
+
+  // Remove puddle when it expires
+  const handleRemovePuddle = (puddleId) => {
+    setPuddles((prev) => prev.filter((p) => p.id !== puddleId));
   };
 
   // Position updates from local player
@@ -478,6 +599,23 @@ export default function App() {
           isCursorFree={isCursorFree}
           screenStream={screenStream || screenPresenter?.stream}
           presenterName={screenPresenter?.presenterName}
+          hoveredSeatId={hoveredSeatId}
+          occupiedSeatIds={occupiedSeatIds}
+        />
+
+        <ProjectileSystem
+          ref={projectileSystemRef}
+          activeProjectiles={activeProjectiles}
+          onProjectileImpact={handleProjectileImpact}
+          puddles={puddles}
+          onRemovePuddle={handleRemovePuddle}
+          isCursorFree={isCursorFree}
+          viewMode={viewMode}
+          isSitting={!!currentSeat}
+          onHoverSeat={(id, occupied) => {
+            setHoveredSeatId(id);
+            setHoveredSeatOccupied(occupied);
+          }}
         />
 
         <LocalPlayer
@@ -492,6 +630,7 @@ export default function App() {
           videoStream={localStream}
           isCamActive={isCamActive}
           camZoom={camZoom}
+          activeEmoji={localEmoji}
         />
 
         {/* Real-time Multiplayer Remote Participants */}
@@ -508,13 +647,44 @@ export default function App() {
         <ContactShadows position={[0, 0.005, 0]} opacity={0.45} scale={26} blur={1.4} far={5} />
       </Canvas>
 
-      {/* Center Reticle Crosshair in FPP Aim Mode */}
+      {/* Center Reticle Crosshair in FPP Aim Mode (with dynamic Seat Hover Prompt) */}
       {viewMode === 'fpp' && !isCursorFree && (
         <div className="pointer-events-none fixed inset-0 flex items-center justify-center z-50">
-          <div className="relative flex items-center justify-center">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 border-2 border-white shadow-md" />
-            <div className="absolute w-6 h-6 rounded-full border border-blue-500/80" />
-            <div className="absolute w-9 h-9 rounded-full border border-white/60" />
+          <div className="relative flex flex-col items-center justify-center">
+            <div className="relative flex items-center justify-center">
+              <div
+                className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-md transition-all ${
+                  hoveredSeatId
+                    ? hoveredSeatOccupied
+                      ? 'bg-red-500 scale-125'
+                      : 'bg-emerald-400 scale-125'
+                    : 'bg-blue-600'
+                }`}
+              />
+              <div
+                className={`absolute rounded-full border transition-all ${
+                  hoveredSeatId
+                    ? 'w-8 h-8 border-cyan-400 animate-ping'
+                    : 'w-6 h-6 border-blue-500/80'
+                }`}
+              />
+              <div className="absolute w-9 h-9 rounded-full border border-white/60" />
+            </div>
+
+            {/* Hover seat visual prompt */}
+            {hoveredSeatId && (
+              <div className="absolute top-7 flex items-center gap-1.5 text-xs font-extrabold shadow-2xl backdrop-blur-md animate-fadeIn whitespace-nowrap">
+                {hoveredSeatOccupied ? (
+                  <span className="bg-red-600/95 text-white px-3 py-1 rounded-full border border-red-400 shadow">
+                    Seat Occupied ({occupiedSeatIds[hoveredSeatId] || 'Participant'})
+                  </span>
+                ) : (
+                  <span className="bg-blue-600/95 text-white px-3 py-1 rounded-full border border-blue-400 shadow animate-pulse">
+                    Click to Sit
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -524,6 +694,7 @@ export default function App() {
         roomId={roomId}
         participantCount={Object.keys(remotePlayers).length + 1}
         userName={userName}
+        currentSocketId={socket?.id}
         isSitting={!!currentSeat}
         currentSeatName={currentSeat?.label}
         onToggleSit={() => {
@@ -559,7 +730,21 @@ export default function App() {
         onToggleScreenShare={toggleScreenShare}
         screenPresenter={screenPresenter}
         iceConnectionStatus={iceConnectionStatus}
+        onThrowProjectile={handleThrowProjectile}
+        onSendEmoji={handleSendEmoji}
+        hoveredSeatInfo={
+          hoveredSeatId
+            ? {
+                seatId: hoveredSeatId,
+                isOccupied: hoveredSeatOccupied,
+                occupantName: occupiedSeatIds[hoveredSeatId]
+              }
+            : null
+        }
       />
+
+      {/* Fullscreen Hit Splatter Overlay (Tomato, Egg, Water Balloon) */}
+      <SplatterOverlay splatterData={splatterData} />
 
       {/* Avatar Customization Modal */}
       <AvatarCustomizer

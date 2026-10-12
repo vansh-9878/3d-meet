@@ -33,7 +33,8 @@ export function LocalPlayer({
   isCursorFree = false,
   videoStream = null,
   isCamActive = false,
-  camZoom = 1.2
+  camZoom = 1.2,
+  activeEmoji = null
 }) {
   const keys = useKeyboardControls();
   const playerPos = useRef(new THREE.Vector3(0, 0, 5.0));
@@ -334,6 +335,7 @@ export function LocalPlayer({
       videoStream={videoStream}
       isCamActive={isCamActive}
       camZoom={camZoom}
+      activeEmoji={activeEmoji}
     />
   );
 }

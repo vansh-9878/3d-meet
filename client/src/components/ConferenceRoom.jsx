@@ -38,7 +38,9 @@ export function ConferenceRoom({
   currentSeatId,
   isCursorFree = false,
   screenStream = null,
-  presenterName = ''
+  presenterName = '',
+  hoveredSeatId = null,
+  occupiedSeatIds = {}
 }) {
   const wallColor = '#64748b';
 
@@ -207,15 +209,28 @@ export function ConferenceRoom({
       </group>
 
       {/* 4. Eight Interactive Executive Chairs */}
-      {SEAT_POSITIONS.map((seat) => (
-        <ConferenceChair
-          key={seat.id}
-          seat={seat}
-          isOccupied={currentSeatId === seat.id}
-          isCursorFree={isCursorFree}
-          onSelect={() => onSeatSelect && onSeatSelect(seat)}
-        />
-      ))}
+      {SEAT_POSITIONS.map((seat) => {
+        const isOccupiedByLocal = currentSeatId === seat.id;
+        const occupiedByName = occupiedSeatIds[seat.id] || null;
+        const isOccupiedByOther = !!occupiedByName;
+        const isHovered = !isCursorFree && hoveredSeatId === seat.id;
+
+        return (
+          <ConferenceChair
+            key={seat.id}
+            seat={seat}
+            isOccupiedByLocal={isOccupiedByLocal}
+            isOccupiedByOther={isOccupiedByOther}
+            occupiedByName={occupiedByName}
+            isHovered={isHovered}
+            onSelect={() => {
+              if (isCursorFree) return; // In mouse free mode, strictly click buttons on screen
+              if (isOccupiedByOther) return; // Exclusivity: no 2 people can sit on the same seat
+              onSeatSelect && onSeatSelect(seat);
+            }}
+          />
+        );
+      })}
 
       {/* 5. 85" Ultra-Bright Presentation TV Wall */}
       <PresentationScreen
@@ -475,48 +490,68 @@ export function ConferenceRoom({
 
 /**
  * Interactive Ergonomic Conference Chair
+ * - Hover effect is driven strictly by crosshair aim
+ * - Mouse interaction is removed so mouse in cursor-free mode is strictly for clicking HUD buttons
+ * - Enforces seat exclusivity visual state
  */
-function ConferenceChair({ seat, isOccupied, onSelect, isCursorFree = false }) {
-  const [hovered, setHovered] = React.useState(false);
+function ConferenceChair({
+  seat,
+  isOccupiedByLocal = false,
+  isOccupiedByOther = false,
+  occupiedByName = null,
+  isHovered = false,
+  onSelect = () => {}
+}) {
   const groupRef = React.useRef();
 
   React.useEffect(() => {
     if (groupRef.current) {
-      groupRef.current.userData = { onSelect };
+      const data = {
+        seatId: seat.id,
+        isOccupied: isOccupiedByLocal || isOccupiedByOther,
+        occupiedByName,
+        onSelect
+      };
+      groupRef.current.userData = data;
       groupRef.current.traverse((child) => {
-        child.userData = { onSelect };
+        child.userData = data;
       });
     }
-  }, [onSelect]);
+  }, [seat.id, isOccupiedByLocal, isOccupiedByOther, occupiedByName, onSelect]);
+
+  const isOccupied = isOccupiedByLocal || isOccupiedByOther;
+
+  // Dynamic upholstery colors with emissive hover highlight
+  const cushionColor = isOccupiedByLocal
+    ? '#2563eb'
+    : isOccupiedByOther
+    ? '#475569'
+    : isHovered
+    ? '#0284c7'
+    : '#2d241e';
+
+  const backrestColor = isOccupiedByLocal
+    ? '#1d4ed8'
+    : isOccupiedByOther
+    ? '#334155'
+    : isHovered
+    ? '#0369a1'
+    : '#1c1510';
 
   return (
     <group
       ref={groupRef}
       position={seat.position}
       rotation={[0, seat.rotation, 0]}
-      onClick={(e) => {
-        // If not in cursor free mode, do not trigger from mouse coordinates;
-        // LocalPlayer's center raycast handles it!
-        if (!isCursorFree) return;
-        e.stopPropagation();
-        onSelect();
-      }}
-      onPointerOver={(e) => {
-        if (!isCursorFree) return;
-        e.stopPropagation();
-        setHovered(true);
-      }}
-      onPointerOut={() => {
-        if (!isCursorFree) return;
-        setHovered(false);
-      }}
     >
       {/* Seat Cushion in Executive Leather */}
       <mesh position={[0, 0.5, 0]} castShadow>
         <boxGeometry args={[0.82, 0.12, 0.82]} />
         <meshStandardMaterial
-          color={isOccupied ? '#2563eb' : hovered ? '#0284c7' : '#2d241e'}
-          roughness={0.4}
+          color={cushionColor}
+          roughness={isHovered ? 0.2 : 0.4}
+          emissive={isHovered ? '#0284c7' : '#000000'}
+          emissiveIntensity={isHovered ? 0.45 : 0}
         />
       </mesh>
 
@@ -524,8 +559,10 @@ function ConferenceChair({ seat, isOccupied, onSelect, isCursorFree = false }) {
       <mesh position={[0, 0.98, -0.38]} castShadow>
         <boxGeometry args={[0.78, 0.84, 0.1]} />
         <meshStandardMaterial
-          color={isOccupied ? '#1d4ed8' : hovered ? '#0369a1' : '#1c1510'}
-          roughness={0.4}
+          color={backrestColor}
+          roughness={isHovered ? 0.2 : 0.4}
+          emissive={isHovered ? '#0369a1' : '#000000'}
+          emissiveIntensity={isHovered ? 0.4 : 0}
         />
       </mesh>
 
@@ -549,16 +586,34 @@ function ConferenceChair({ seat, isOccupied, onSelect, isCursorFree = false }) {
         <meshStandardMaterial color="#475569" metalness={0.8} />
       </mesh>
 
-      {/* Floating Sit Indicator Beacon */}
+      {/* Floating Sit Indicator Beacon (Crosshair Hover Effect) */}
       {!isOccupied && (
-        <mesh position={[0, hovered ? 1.6 : 1.35, 0]}>
-          <cylinderGeometry args={[0.18, 0.18, 0.05, 16]} />
-          <meshBasicMaterial
-            color={hovered ? '#38bdf8' : '#60a5fa'}
-            transparent
-            opacity={hovered ? 0.9 : 0.4}
-          />
-        </mesh>
+        <group position={[0, isHovered ? 1.6 : 1.35, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.18, 0.18, 0.05, 16]} />
+            <meshBasicMaterial
+              color={isHovered ? '#38bdf8' : '#60a5fa'}
+              transparent
+              opacity={isHovered ? 0.95 : 0.35}
+            />
+          </mesh>
+          {isHovered && (
+            <mesh position={[0, 0.15, 0]}>
+              <ringGeometry args={[0.2, 0.24, 16]} />
+              <meshBasicMaterial color="#38bdf8" transparent opacity={0.85} />
+            </mesh>
+          )}
+        </group>
+      )}
+
+      {/* Occupied Indicator when hovered */}
+      {isOccupiedByOther && isHovered && (
+        <group position={[0, 1.45, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.18, 0.18, 0.04, 16]} />
+            <meshBasicMaterial color="#ef4444" transparent opacity={0.85} />
+          </mesh>
+        </group>
       )}
     </group>
   );

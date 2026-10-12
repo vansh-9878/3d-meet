@@ -90,8 +90,19 @@ export function RemotePlayer({ player, videoStream = null, isCamActive = false, 
     currentRot.current = THREE.MathUtils.lerp(currentRot.current, targetRot, 0.2);
   });
 
+  const groupRef = useRef();
+
+  useEffect(() => {
+    if (groupRef.current && player.id) {
+      groupRef.current.userData = { playerId: player.id };
+      groupRef.current.traverse((child) => {
+        child.userData = { ...(child.userData || {}), playerId: player.id };
+      });
+    }
+  }, [player.id]);
+
   return (
-    <group>
+    <group ref={groupRef}>
       <CharacterAvatar
         position={[currentPos.current.x, currentPos.current.y, currentPos.current.z]}
         rotation={currentRot.current}
@@ -103,6 +114,7 @@ export function RemotePlayer({ player, videoStream = null, isCamActive = false, 
         videoStream={videoStream}
         isCamActive={isCamActive}
         camZoom={camZoom}
+        activeEmoji={player.activeEmoji}
       />
     </group>
   );
