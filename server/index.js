@@ -125,6 +125,10 @@ const io = new Server(server, {
 const rooms = new Map();
 // Active screen presenter per room: roomId -> { presenterId, presenterName }
 const roomScreenPresenters = new Map();
+// Active whiteboard user per room: roomId -> { userId, userName } (Exclusivity: only 1 user at a time)
+const roomWhiteboardUsers = new Map();
+// Whiteboard stroke history per room: roomId -> Array of stroke objects
+const roomWhiteboardStrokes = new Map();
 
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
@@ -163,16 +167,20 @@ io.on('connection', (socket) => {
     room.set(socket.id, userData);
     socket.data.roomId = activeRoomId;
 
-    // Send the current list of participants + active ICE servers + active screen presenter to newly joined player
+    // Send current participants + ICE servers + active screen presenter + whiteboard state
     const participantsList = Array.from(room.values());
     const iceServers = await getIceServers();
     const activeScreenPresenter = roomScreenPresenters.get(activeRoomId) || null;
+    const activeWhiteboardUser = roomWhiteboardUsers.get(activeRoomId) || null;
+    const whiteboardStrokes = roomWhiteboardStrokes.get(activeRoomId) || [];
 
     socket.emit('room-users', {
       roomId: activeRoomId,
       users: participantsList,
       iceServers,
-      screenPresenter: activeScreenPresenter
+      screenPresenter: activeScreenPresenter,
+      whiteboardUser: activeWhiteboardUser,
+      whiteboardStrokes
     });
 
     // Broadcast to other participants in this room that a new user joined
@@ -406,6 +414,61 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Collaborative Whiteboard: Claim drawing turn (Exclusivity: 1 person at a time)
+  socket.on('whiteboard-claim', () => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    const room = rooms.get(roomId);
+    const user = room.get(socket.id);
+    const current = roomWhiteboardUsers.get(roomId);
+
+    if (current && current.userId !== socket.id) {
+      socket.emit('whiteboard-error', {
+        message: `Whiteboard is currently in use by ${current.userName || 'another participant'}. Only one person can draw at a time.`
+      });
+      return;
+    }
+
+    const info = { userId: socket.id, userName: user?.name || 'Participant' };
+    roomWhiteboardUsers.set(roomId, info);
+    io.in(roomId).emit('whiteboard-claimed', info);
+  });
+
+  // Collaborative Whiteboard: Release control
+  socket.on('whiteboard-release', () => {
+    const roomId = socket.data.roomId;
+    if (roomId) {
+      const current = roomWhiteboardUsers.get(roomId);
+      if (current && current.userId === socket.id) {
+        roomWhiteboardUsers.delete(roomId);
+        io.in(roomId).emit('whiteboard-released');
+      }
+    }
+  });
+
+  // Collaborative Whiteboard: Broadcast real-time stroke data
+  socket.on('whiteboard-draw', (strokeData) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const current = roomWhiteboardUsers.get(roomId);
+    // Exclusivity: only the user who holds the whiteboard can draw
+    if (current && current.userId !== socket.id) return;
+
+    if (!roomWhiteboardStrokes.has(roomId)) {
+      roomWhiteboardStrokes.set(roomId, []);
+    }
+
+    if (strokeData.isClear) {
+      roomWhiteboardStrokes.set(roomId, []);
+    } else {
+      const strokes = roomWhiteboardStrokes.get(roomId);
+      strokes.push(strokeData);
+      if (strokes.length > 5000) strokes.shift();
+    }
+
+    socket.to(roomId).emit('whiteboard-draw', strokeData);
+  });
+
   // Reaction / Emote broadcast
   socket.on('send-reaction', (reaction) => {
     const roomId = socket.data.roomId;
@@ -433,10 +496,19 @@ io.on('connection', (socket) => {
         });
       }
 
+      // Clean up whiteboard if this socket held the whiteboard
+      const activeWbUser = roomWhiteboardUsers.get(roomId);
+      if (activeWbUser && activeWbUser.userId === socket.id) {
+        roomWhiteboardUsers.delete(roomId);
+        io.in(roomId).emit('whiteboard-released');
+      }
+
       room.delete(socket.id);
       if (room.size === 0) {
         rooms.delete(roomId);
         roomScreenPresenters.delete(roomId);
+        roomWhiteboardUsers.delete(roomId);
+        roomWhiteboardStrokes.delete(roomId);
       } else {
         io.in(roomId).emit('user-left', socket.id);
       }

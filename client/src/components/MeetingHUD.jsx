@@ -20,7 +20,8 @@ import {
   MonitorUp,
   ZoomIn,
   ZoomOut,
-  Smile
+  Smile,
+  PenTool
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -53,7 +54,9 @@ export function MeetingHUD({
   iceConnectionStatus = 'new',
   onThrowProjectile = () => {},
   onSendEmoji = () => {},
-  hoveredSeatInfo = null
+  hoveredSeatInfo = null,
+  whiteboardUser = null,
+  onOpenWhiteboard = () => {}
 }) {
   const [showControlsHint, setShowControlsHint] = useState(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -295,6 +298,9 @@ export function MeetingHUD({
               <strong className="text-blue-700 font-mono">Space</strong> : Jump (on table)
             </div>
             <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 col-span-2">
+              <strong className="text-blue-700 font-mono">1 / 2 / 3</strong> : Throw Tomato / Egg / Balloon
+            </div>
+            <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 col-span-2">
               <strong className="text-blue-700 font-mono">V Key</strong> : Toggle Free Mouse Cursor
             </div>
           </div>
@@ -413,9 +419,43 @@ export function MeetingHUD({
                 ? 'Return to Character'
                 : screenPresenter
                 ? `View TV (${screenPresenter.presenterName})`
-                : 'Focus Presentation TV'}
+                : 'Focus TV'}
             </span>
           </button>
+
+          {/* Collaborative Interactive Whiteboard Button */}
+          {(() => {
+            const isAnotherWhiteboardUser = whiteboardUser && whiteboardUser.userId !== currentSocketId;
+            return (
+              <button
+                onClick={() => {
+                  if (isAnotherWhiteboardUser) {
+                    alert(`Whiteboard is currently in use by ${whiteboardUser.userName}. Only one person can draw at a time.`);
+                    return;
+                  }
+                  onOpenWhiteboard();
+                }}
+                disabled={isAnotherWhiteboardUser}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  isAnotherWhiteboardUser
+                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
+                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm'
+                }`}
+                title={
+                  isAnotherWhiteboardUser
+                    ? `Whiteboard in use by ${whiteboardUser.userName} (1 user max)`
+                    : 'Open Collaborative Whiteboard Drawing Studio'
+                }
+              >
+                <PenTool className="w-4 h-4 text-indigo-600" />
+                <span>
+                  {isAnotherWhiteboardUser
+                    ? `Board (${whiteboardUser.userName})`
+                    : 'Whiteboard'}
+                </span>
+              </button>
+            );
+          })()}
 
           <div className="w-[1px] h-7 bg-gray-200 mx-1" />
 
@@ -428,36 +468,45 @@ export function MeetingHUD({
             <Sparkles className="w-5 h-5" />
           </button>
 
-          {/* Projectile Throw Buttons (Tomato, Egg, Water Balloon) */}
+          {/* Projectile Throw Buttons (Tomato, Egg, Water Balloon) with [1], [2], [3] Hotkey Indicators */}
           <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 p-1 rounded-xl">
             {/* Tomato */}
             <button
               onClick={() => onThrowProjectile('tomato')}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg transition-all active:scale-90 shadow-sm"
-              title="Throw Tomato at Crosshair Target"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              title="Throw Tomato at Crosshair Target (HotKey: 1)"
             >
               <span className="text-base">🍅</span>
               <span className="text-[11px] font-extrabold text-red-700 hidden sm:inline">Tomato</span>
+              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
+                1
+              </span>
             </button>
 
             {/* Egg */}
             <button
               onClick={() => onThrowProjectile('egg')}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg transition-all active:scale-90 shadow-sm"
-              title="Throw Egg at Crosshair Target"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              title="Throw Egg at Crosshair Target (HotKey: 2)"
             >
               <span className="text-base">🥚</span>
               <span className="text-[11px] font-extrabold text-yellow-800 hidden sm:inline">Egg</span>
+              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200">
+                2
+              </span>
             </button>
 
             {/* Water Balloon */}
             <button
               onClick={() => onThrowProjectile('water_balloon')}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-sky-50 text-sky-600 border border-sky-200 rounded-lg transition-all active:scale-90 shadow-sm"
-              title="Throw Water Balloon at Crosshair Target"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-sky-50 text-sky-600 border border-sky-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              title="Throw Water Balloon at Crosshair Target (HotKey: 3)"
             >
               <span className="text-base">💧</span>
               <span className="text-[11px] font-extrabold text-sky-700 hidden sm:inline">Balloon</span>
+              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">
+                3
+              </span>
             </button>
           </div>
 

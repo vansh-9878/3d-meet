@@ -11,6 +11,7 @@ import { AvatarCustomizer, AVATAR_PRESETS } from './components/AvatarCustomizer'
 import { MeetingHUD } from './components/MeetingHUD';
 import { SplatterOverlay } from './components/SplatterOverlay';
 import { ProjectileSystem } from './components/ProjectileSystem';
+import { WhiteboardModal } from './components/WhiteboardModal';
 import { useWebRTC } from './hooks/useWebRTC';
 
 // Dynamically determine the socket URL:
@@ -59,6 +60,14 @@ export default function App() {
 
   // Local Emoji Bubble (2-3 seconds)
   const [localEmoji, setLocalEmoji] = useState(null);
+
+  // Collaborative Whiteboard State
+  const [whiteboardUser, setWhiteboardUser] = useState(null);
+  const [whiteboardStrokes, setWhiteboardStrokes] = useState([]);
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+
+  // Local player ref for podium teleportation
+  const localPlayerRef = useRef(null);
 
   // Network state
   const [socket, setSocket] = useState(null);
@@ -118,7 +127,7 @@ export default function App() {
     });
 
     // Received participant list for the current room
-    s.on('room-users', ({ roomId: joinedRoomId, users }) => {
+    s.on('room-users', ({ roomId: joinedRoomId, users, whiteboardUser: wbUser, whiteboardStrokes: wbStrokes }) => {
       const peers = {};
       users.forEach((u) => {
         if (u.id !== s.id) {
@@ -126,6 +135,8 @@ export default function App() {
         }
       });
       setRemotePlayers(peers);
+      if (wbUser !== undefined) setWhiteboardUser(wbUser);
+      if (wbStrokes !== undefined) setWhiteboardStrokes(wbStrokes);
     });
 
     // Remote teammate joined
@@ -257,6 +268,30 @@ export default function App() {
       alert(data.message || 'Screen sharing is already in use by another participant.');
     });
 
+    // Whiteboard claimed by participant
+    s.on('whiteboard-claimed', (data) => {
+      setWhiteboardUser(data.whiteboardUser);
+    });
+
+    // Whiteboard released
+    s.on('whiteboard-released', () => {
+      setWhiteboardUser(null);
+    });
+
+    // Whiteboard draw update
+    s.on('whiteboard-draw', (stroke) => {
+      if (stroke.clearAll) {
+        setWhiteboardStrokes([]);
+      } else {
+        setWhiteboardStrokes((prev) => [...prev, stroke]);
+      }
+    });
+
+    // Whiteboard exclusivity error
+    s.on('whiteboard-error', (data) => {
+      alert(data.message || 'Whiteboard is currently occupied.');
+    });
+
     // Teammate left room
     s.on('user-left', (socketId) => {
       setRemotePlayers((prev) => {
@@ -386,6 +421,78 @@ export default function App() {
   // Remove puddle when it expires
   const handleRemovePuddle = (puddleId) => {
     setPuddles((prev) => prev.filter((p) => p.id !== puddleId));
+  };
+
+  // Teleport to executive speaker podium when starting screen sharing
+  const prevScreenSharingRef = useRef(false);
+  useEffect(() => {
+    if (isScreenSharing && !prevScreenSharingRef.current) {
+      if (currentSeat) {
+        handleStandUp();
+      }
+      const podiumPos = [5.0, 0, -10.2];
+      const podiumRot = Math.PI - 0.22;
+      localPlayerRef.current?.teleport(podiumPos, podiumRot);
+      if (socket) {
+        socket.emit('player-move', {
+          position: podiumPos,
+          rotation: podiumRot,
+          state: 'idle'
+        });
+      }
+    }
+    prevScreenSharingRef.current = isScreenSharing;
+  }, [isScreenSharing, currentSeat, socket]);
+
+  // Hotkeys 1, 2, 3: Shoot Tomato, Egg, or Water Balloon
+  useEffect(() => {
+    const handleNumberKeys = (e) => {
+      if (!hasEntered) return;
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+      if (e.code === 'Digit1' || e.code === 'Numpad1') {
+        e.preventDefault();
+        handleThrowProjectile('tomato');
+      } else if (e.code === 'Digit2' || e.code === 'Numpad2') {
+        e.preventDefault();
+        handleThrowProjectile('egg');
+      } else if (e.code === 'Digit3' || e.code === 'Numpad3') {
+        e.preventDefault();
+        handleThrowProjectile('water_balloon');
+      }
+    };
+    window.addEventListener('keydown', handleNumberKeys);
+    return () => window.removeEventListener('keydown', handleNumberKeys);
+  }, [hasEntered, socket]);
+
+  // Collaborative Whiteboard handlers
+  const handleOpenWhiteboard = () => {
+    if (whiteboardUser && whiteboardUser.userId !== socket?.id) {
+      alert(`Whiteboard is currently in use by ${whiteboardUser.userName}. Only one person can draw at a time.`);
+      return;
+    }
+    if (socket) {
+      socket.emit('whiteboard-claim');
+    }
+    setIsWhiteboardOpen(true);
+    setIsCursorFree(true);
+  };
+
+  const handleCloseWhiteboard = () => {
+    if (socket) {
+      socket.emit('whiteboard-release');
+    }
+    setIsWhiteboardOpen(false);
+  };
+
+  const handleWhiteboardDraw = (stroke) => {
+    if (stroke.clearAll) {
+      setWhiteboardStrokes([]);
+    } else {
+      setWhiteboardStrokes((prev) => [...prev, stroke]);
+    }
+    if (socket) {
+      socket.emit('whiteboard-draw', stroke);
+    }
   };
 
   // Position updates from local player
@@ -601,6 +708,10 @@ export default function App() {
           presenterName={screenPresenter?.presenterName}
           hoveredSeatId={hoveredSeatId}
           occupiedSeatIds={occupiedSeatIds}
+          whiteboardStrokes={whiteboardStrokes}
+          whiteboardUser={whiteboardUser}
+          currentSocketId={socket?.id}
+          onOpenWhiteboard={handleOpenWhiteboard}
         />
 
         <ProjectileSystem
@@ -619,6 +730,7 @@ export default function App() {
         />
 
         <LocalPlayer
+          ref={localPlayerRef}
           avatarConfig={avatarConfig}
           name={userName}
           isSitting={!!currentSeat}
@@ -741,6 +853,8 @@ export default function App() {
               }
             : null
         }
+        whiteboardUser={whiteboardUser}
+        onOpenWhiteboard={handleOpenWhiteboard}
       />
 
       {/* Fullscreen Hit Splatter Overlay (Tomato, Egg, Water Balloon) */}
@@ -752,6 +866,14 @@ export default function App() {
         onClose={() => setIsCustomizerOpen(false)}
         currentConfig={avatarConfig}
         onChange={handleAvatarChange}
+      />
+
+      {/* Collaborative Interactive Whiteboard Studio Modal */}
+      <WhiteboardModal
+        isOpen={isWhiteboardOpen}
+        onClose={handleCloseWhiteboard}
+        onDraw={handleWhiteboardDraw}
+        strokes={whiteboardStrokes}
       />
     </div>
   );

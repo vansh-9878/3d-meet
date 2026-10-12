@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
@@ -22,7 +22,7 @@ function isPositionBlocked(x, z, y) {
   return false;
 }
 
-export function LocalPlayer({
+export const LocalPlayer = forwardRef(function LocalPlayer({
   avatarConfig,
   name,
   isSitting,
@@ -35,9 +35,22 @@ export function LocalPlayer({
   isCamActive = false,
   camZoom = 1.2,
   activeEmoji = null
-}) {
+}, ref) {
   const keys = useKeyboardControls();
   const playerPos = useRef(new THREE.Vector3(0, 0, 5.0));
+
+  // Expose teleportation method
+  useImperativeHandle(ref, () => ({
+    teleport: (newPos, newRot) => {
+      playerPos.current.set(newPos[0], newPos[1], newPos[2]);
+      if (newRot !== undefined) {
+        playerRot.current = newRot;
+      }
+      velocityY.current = 0;
+      isGrounded.current = true;
+      mouseLook.current.pitch = 0;
+    }
+  }));
   const velocityY = useRef(0);
   const isGrounded = useRef(true);
 
@@ -338,4 +351,4 @@ export function LocalPlayer({
       activeEmoji={activeEmoji}
     />
   );
-}
+});

@@ -1,6 +1,7 @@
 import React from 'react';
 import * as THREE from 'three';
 import { PresentationScreen } from './PresentationScreen';
+import { InteractiveWhiteboard } from './InteractiveWhiteboard';
 
 /**
  * Modern Executive Boardroom:
@@ -40,7 +41,11 @@ export function ConferenceRoom({
   screenStream = null,
   presenterName = '',
   hoveredSeatId = null,
-  occupiedSeatIds = {}
+  occupiedSeatIds = {},
+  whiteboardStrokes = [],
+  whiteboardUser = null,
+  currentSocketId = null,
+  onOpenWhiteboard = () => {}
 }) {
   const wallColor = '#64748b';
 
@@ -238,21 +243,17 @@ export function ConferenceRoom({
         presenterName={presenterName}
       />
 
-      {/* 6. Collaborative Whiteboard (West Wall) */}
-      <group position={[-11.75, 3.6, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[7.8, 3.8, 0.08]} />
-          <meshStandardMaterial color="#64748b" metalness={0.8} roughness={0.3} />
-        </mesh>
-        <mesh position={[0, 0, 0.045]}>
-          <planeGeometry args={[7.6, 3.6]} />
-          <meshStandardMaterial color="#ffffff" roughness={0.05} metalness={0.02} />
-        </mesh>
-        <mesh position={[0, -1.95, 0.15]}>
-          <boxGeometry args={[5.0, 0.08, 0.25]} />
-          <meshStandardMaterial color="#475569" metalness={0.8} />
-        </mesh>
-      </group>
+      {/* Speaker Podium in front right side of the TV (without blocking TV screen) */}
+      <SpeakerPodium position={[5.0, 0, -9.6]} rotation={[0, -0.22, 0]} />
+
+      {/* 6. Collaborative Interactive Whiteboard (West Wall) */}
+      <InteractiveWhiteboard
+        strokes={whiteboardStrokes}
+        whiteboardUser={whiteboardUser}
+        currentSocketId={currentSocketId}
+        onOpenWhiteboard={onOpenWhiteboard}
+        isCursorFree={isCursorFree}
+      />
 
       {/* 7. NEW ROOM FILLER ITEMS (Breakout Lounge, Sideboards, Credenza, Flipchart) */}
       
@@ -615,6 +616,83 @@ function ConferenceChair({
           </mesh>
         </group>
       )}
+    </group>
+  );
+}
+
+/**
+ * Executive Speaker Podium / Lectern:
+ * - Positioned in the front right side of the TV without blocking the screen
+ * - Total height is ~1.06m (strictly less than the avatar height of 1.75m so the speaker's chest and face are fully visible)
+ * - Presenter teleports behind it upon screen share and can move around freely
+ */
+function SpeakerPodium({ position = [5.0, 0, -9.6], rotation = [0, -0.22, 0] }) {
+  return (
+    <group position={position} rotation={rotation}>
+      {/* 1. Heavy Charcoal Slate Base Platform (h = 0.06m) */}
+      <mesh position={[0, 0.03, 0]} castShadow receiveShadow>
+        <boxGeometry args={[1.0, 0.06, 0.8]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.3} metalness={0.7} />
+      </mesh>
+
+      {/* 2. Executive Dark Walnut Wood Pedestal Column (h = 0.94m) */}
+      <mesh position={[0, 0.52, 0]} castShadow>
+        <boxGeometry args={[0.68, 0.92, 0.46]} />
+        <meshStandardMaterial color="#5c381e" roughness={0.5} metalness={0.1} />
+      </mesh>
+
+      {/* Front Architectural Fluted Trim Panels */}
+      <mesh position={[0, 0.52, 0.235]}>
+        <boxGeometry args={[0.54, 0.84, 0.02]} />
+        <meshStandardMaterial color="#3e2723" roughness={0.6} />
+      </mesh>
+
+      {/* Brushed Brass Decorative Inlay Plate */}
+      <mesh position={[0, 0.52, 0.248]}>
+        <boxGeometry args={[0.26, 0.12, 0.01]} />
+        <meshStandardMaterial color="#f59e0b" roughness={0.25} metalness={0.85} />
+      </mesh>
+
+      {/* 3. Angled Slanted Lectern Desktop (h = 1.04m, tilted towards speaker) */}
+      <group position={[0, 0.98, 0]} rotation={[-0.18, 0, 0]}>
+        {/* Main Slanted Surface */}
+        <mesh position={[0, 0.04, 0]} castShadow>
+          <boxGeometry args={[0.88, 0.05, 0.62]} />
+          <meshStandardMaterial color="#451a03" roughness={0.4} metalness={0.15} />
+        </mesh>
+
+        {/* Front Paper / Tablet Lip */}
+        <mesh position={[0, 0.075, 0.29]}>
+          <boxGeometry args={[0.84, 0.04, 0.03]} />
+          <meshStandardMaterial color="#94a3b8" metalness={0.8} />
+        </mesh>
+
+        {/* Dual Gooseneck Presentation Microphones */}
+        <group position={[-0.22, 0.12, -0.15]} rotation={[0.2, 0, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.008, 0.008, 0.18, 8]} />
+            <meshStandardMaterial color="#475569" metalness={0.9} />
+          </mesh>
+          <mesh position={[0, 0.09, 0]}>
+            <sphereGeometry args={[0.016, 8, 8]} />
+            <meshStandardMaterial color="#0f172a" roughness={0.8} />
+          </mesh>
+        </group>
+
+        <group position={[0.22, 0.12, -0.15]} rotation={[0.2, 0, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.008, 0.008, 0.18, 8]} />
+            <meshStandardMaterial color="#475569" metalness={0.9} />
+          </mesh>
+          <mesh position={[0, 0.09, 0]}>
+            <sphereGeometry args={[0.016, 8, 8]} />
+            <meshStandardMaterial color="#0f172a" roughness={0.8} />
+          </mesh>
+        </group>
+
+        {/* Subtle LED Reading Light under lip */}
+        <pointLight position={[0, 0.02, 0.1]} intensity={0.4} distance={1.2} color="#fef3c7" />
+      </group>
     </group>
   );
 }
