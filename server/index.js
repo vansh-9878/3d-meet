@@ -123,24 +123,45 @@ const io = new Server(server, {
 
 // In-memory room state: roomId -> Map(socketId => participantData)
 const rooms = new Map();
+// Active map per room: roomId -> 'office' | 'theatre'
+const roomMapTypes = new Map();
 // Active screen presenter per room: roomId -> { presenterId, presenterName }
 const roomScreenPresenters = new Map();
 // Active whiteboard user per room: roomId -> { userId, userName } (Exclusivity: only 1 user at a time)
 const roomWhiteboardUsers = new Map();
 // Whiteboard stroke history per room: roomId -> Array of stroke objects
 const roomWhiteboardStrokes = new Map();
+// Movie Theatre lighting state: roomId -> { lightsOn: boolean }
+const roomTheatreLighting = new Map();
+// Movie Theatre synchronized video playback state:
+// roomId -> { videoUrl: string, isPlaying: boolean, currentTime: number, lastUpdated: number, playbackRate: number, updatedBy: string }
+const roomTheatrePlayback = new Map();
 
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
 
   // Join a specific room with unique roomId
-  socket.on('join-room', async ({ roomId, user }) => {
+  socket.on('join-room', async ({ roomId, mapType = 'office', user }) => {
     // Sanitize room ID
     const activeRoomId = (roomId && roomId.trim()) ? roomId.trim().toLowerCase() : 'main-office';
     socket.join(activeRoomId);
 
     if (!rooms.has(activeRoomId)) {
       rooms.set(activeRoomId, new Map());
+      roomMapTypes.set(activeRoomId, mapType || 'office');
+    }
+    if (!roomTheatreLighting.has(activeRoomId)) {
+      roomTheatreLighting.set(activeRoomId, { lightsOn: true });
+    }
+    if (!roomTheatrePlayback.has(activeRoomId)) {
+      roomTheatrePlayback.set(activeRoomId, {
+        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        isPlaying: false,
+        currentTime: 0,
+        lastUpdated: Date.now(),
+        playbackRate: 1,
+        updatedBy: ''
+      });
     }
 
     const room = rooms.get(activeRoomId);
@@ -167,20 +188,38 @@ io.on('connection', (socket) => {
     room.set(socket.id, userData);
     socket.data.roomId = activeRoomId;
 
-    // Send current participants + ICE servers + active screen presenter + whiteboard state
+    // Send current participants + ICE servers + active screen presenter + whiteboard state + theatre state
     const participantsList = Array.from(room.values());
     const iceServers = await getIceServers();
     const activeScreenPresenter = roomScreenPresenters.get(activeRoomId) || null;
     const activeWhiteboardUser = roomWhiteboardUsers.get(activeRoomId) || null;
     const whiteboardStrokes = roomWhiteboardStrokes.get(activeRoomId) || [];
+    const activeMapType = roomMapTypes.get(activeRoomId) || 'office';
+    const theatreLighting = roomTheatreLighting.get(activeRoomId) || { lightsOn: true };
+    const rawPlayback = roomTheatrePlayback.get(activeRoomId) || {
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      isPlaying: false,
+      currentTime: 0,
+      lastUpdated: Date.now(),
+      playbackRate: 1,
+      updatedBy: ''
+    };
+    let currentPlayback = { ...rawPlayback };
+    if (currentPlayback.isPlaying && currentPlayback.lastUpdated) {
+      const elapsed = (Date.now() - currentPlayback.lastUpdated) / 1000;
+      currentPlayback.currentTime += elapsed * (currentPlayback.playbackRate || 1);
+    }
 
     socket.emit('room-users', {
       roomId: activeRoomId,
+      mapType: activeMapType,
       users: participantsList,
       iceServers,
       screenPresenter: activeScreenPresenter,
       whiteboardUser: activeWhiteboardUser,
-      whiteboardStrokes
+      whiteboardStrokes,
+      theatreLighting,
+      theatrePlayback: currentPlayback
     });
 
     // Broadcast to other participants in this room that a new user joined
@@ -480,6 +519,70 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Theatre Lighting Toggle
+  socket.on('theatre-toggle-lights', () => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const current = roomTheatreLighting.get(roomId) || { lightsOn: true };
+    const updated = { lightsOn: !current.lightsOn };
+    roomTheatreLighting.set(roomId, updated);
+    io.in(roomId).emit('theatre-lights-changed', updated);
+  });
+
+  // Theatre Video Watch-Together Synchronization
+  socket.on('theatre-video-control', (data) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    const user = room ? room.get(socket.id) : null;
+
+    const current = roomTheatrePlayback.get(roomId) || {
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      isPlaying: false,
+      currentTime: 0,
+      lastUpdated: Date.now(),
+      playbackRate: 1,
+      updatedBy: ''
+    };
+
+    const action = data.action; // 'play' | 'pause' | 'seek' | 'change-source'
+    const newPlayback = {
+      videoUrl: data.videoUrl !== undefined ? data.videoUrl : current.videoUrl,
+      isPlaying: data.isPlaying !== undefined ? !!data.isPlaying : (action === 'play' ? true : action === 'pause' ? false : current.isPlaying),
+      currentTime: typeof data.currentTime === 'number' ? Math.max(0, data.currentTime) : current.currentTime,
+      lastUpdated: Date.now(),
+      playbackRate: data.playbackRate || 1,
+      updatedBy: user?.name || 'Participant'
+    };
+
+    roomTheatrePlayback.set(roomId, newPlayback);
+    io.in(roomId).emit('theatre-playback-updated', {
+      ...newPlayback,
+      action
+    });
+  });
+
+  // Change Map between 'office' and 'theatre'
+  socket.on('change-map', ({ mapType }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !['office', 'theatre'].includes(mapType)) return;
+    roomMapTypes.set(roomId, mapType);
+
+    // Reset sitting states when changing maps
+    const room = rooms.get(roomId);
+    if (room) {
+      for (const participant of room.values()) {
+        participant.state = 'idle';
+        participant.seatId = null;
+      }
+    }
+
+    io.in(roomId).emit('map-changed', {
+      mapType,
+      changedBy: socket.id
+    });
+  });
+
   // Disconnect & Room cleanup
   socket.on('disconnect', () => {
     const roomId = socket.data.roomId;
@@ -506,9 +609,12 @@ io.on('connection', (socket) => {
       room.delete(socket.id);
       if (room.size === 0) {
         rooms.delete(roomId);
+        roomMapTypes.delete(roomId);
         roomScreenPresenters.delete(roomId);
         roomWhiteboardUsers.delete(roomId);
         roomWhiteboardStrokes.delete(roomId);
+        roomTheatreLighting.delete(roomId);
+        roomTheatrePlayback.delete(roomId);
       } else {
         io.in(roomId).emit('user-left', socket.id);
       }

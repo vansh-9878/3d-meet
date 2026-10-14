@@ -21,12 +21,17 @@ import {
   ZoomIn,
   ZoomOut,
   Smile,
-  PenTool
+  PenTool,
+  Lightbulb,
+  Film,
+  Building2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function MeetingHUD({
   roomId = 'main-office',
+  mapType = 'office',
+  onSwitchMap = () => {},
   participantCount = 1,
   userName = '',
   currentSocketId = null,
@@ -56,7 +61,10 @@ export function MeetingHUD({
   onSendEmoji = () => {},
   hoveredSeatInfo = null,
   whiteboardUser = null,
-  onOpenWhiteboard = () => {}
+  onOpenWhiteboard = () => {},
+  theatreLightsOn = true,
+  onToggleTheatreLights = () => {},
+  onOpenMoviePlayer = () => {}
 }) {
   const [showControlsHint, setShowControlsHint] = useState(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -89,14 +97,19 @@ export function MeetingHUD({
         e.preventDefault();
         onToggleCursorFree();
       }
+      // 'L' key toggles theatre lights
+      if (e.code === 'KeyL' && mapType === 'theatre') {
+        e.preventDefault();
+        onToggleTheatreLights();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSitting, onToggleSit, onToggleCursorFree]);
+  }, [isSitting, onToggleSit, onToggleCursorFree, mapType, onToggleTheatreLights]);
 
   const handleCopyInvite = () => {
-    // Generate shareable link containing the room query param
-    const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(roomId)}`;
+    // Generate shareable link containing the room query param and mapType
+    const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(roomId)}&map=${encodeURIComponent(mapType)}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
@@ -111,21 +124,35 @@ export function MeetingHUD({
     onReaction('confetti');
   };
 
-  // When in Presentation View: remove all other buttons that block the TV screen,
-  // keeping ONLY ONE clean button to exit presentation mode.
+  // When in Presentation / Cinema View: remove all other buttons that block the screen,
+  // keeping ONLY ONE clean button to exit viewing mode.
   if (viewMode === 'presentation') {
     return (
       <div className="pointer-events-none select-none absolute inset-0 flex flex-col justify-start items-center p-6 z-40">
         <div className="pointer-events-auto mt-2">
           <button
             onClick={() => onChangeViewMode('fpp')}
-            className="flex items-center gap-2.5 px-6 py-3.5 bg-white/95 hover:bg-white text-black font-extrabold text-sm rounded-2xl shadow-2xl border-2 border-indigo-600 transition-all active:scale-95 backdrop-blur-md ring-4 ring-indigo-500/25 cursor-pointer"
-            title="Exit Presentation View (Return to Character)"
+            className={`flex items-center gap-2.5 px-6 py-3.5 bg-white/95 hover:bg-white text-black font-extrabold text-sm rounded-2xl shadow-2xl transition-all active:scale-95 backdrop-blur-md cursor-pointer ${
+              mapType === 'theatre'
+                ? 'border-2 border-red-600 ring-4 ring-red-500/25'
+                : 'border-2 border-indigo-600 ring-4 ring-indigo-500/25'
+            }`}
+            title="Exit Viewing Mode (Return to Character)"
           >
-            <Tv className="w-5 h-5 text-indigo-600" />
-            <span className="text-black">Exit Presentation View</span>
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-900 ml-1">
-              Return to Character
+            {mapType === 'theatre' ? (
+              <Film className="w-5 h-5 text-red-600" />
+            ) : (
+              <Tv className="w-5 h-5 text-indigo-600" />
+            )}
+            <span className="text-black">
+              {mapType === 'theatre' ? 'Exit Cinema View' : 'Exit Presentation View'}
+            </span>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ml-1 ${
+              mapType === 'theatre'
+                ? 'bg-red-100 text-red-900'
+                : 'bg-indigo-100 text-indigo-900'
+            }`}>
+              Return to Avatar
             </span>
           </button>
         </div>
@@ -138,13 +165,42 @@ export function MeetingHUD({
       {/* Top Header Bar */}
       <div className="flex items-center justify-between w-full pointer-events-auto">
         <div className="flex items-center gap-3 bg-white text-gray-900 px-5 py-3 rounded-2xl border border-gray-300 shadow-xl">
-          <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse" />
+          <div className={`w-3.5 h-3.5 rounded-full animate-pulse ${
+            mapType === 'theatre' ? 'bg-red-500' : 'bg-emerald-500'
+          }`} />
           <div>
             <div className="text-sm font-extrabold text-gray-900 tracking-wide flex items-center gap-2">
-              Virtual Office
+              {mapType === 'theatre' ? 'Movie Theatre' : 'Virtual Office'}
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
                 Room: {roomId}
               </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                mapType === 'theatre'
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}>
+                {mapType === 'theatre' ? '🎬 Cinema' : '🏢 Boardroom'}
+              </span>
+
+              {/* Map Switcher Button */}
+              <button
+                onClick={onSwitchMap}
+                className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 transition-all active:scale-95"
+                title={mapType === 'theatre' ? 'Switch to Executive Boardroom' : 'Switch to Movie Theatre'}
+              >
+                {mapType === 'theatre' ? (
+                  <>
+                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Go to Boardroom</span>
+                  </>
+                ) : (
+                  <>
+                    <Film className="w-3.5 h-3.5 text-red-600" />
+                    <span>Go to Cinema</span>
+                  </>
+                )}
+              </button>
+
               <button
                 onClick={handleCopyInvite}
                 className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 transition-all active:scale-95"
@@ -295,7 +351,7 @@ export function MeetingHUD({
               <strong className="text-blue-700 font-mono">Shift</strong> : Sprint Run
             </div>
             <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200">
-              <strong className="text-blue-700 font-mono">Space</strong> : Jump (on table)
+              <strong className="text-blue-700 font-mono">Space</strong> : Jump (on table / stage)
             </div>
             <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 col-span-2">
               <strong className="text-blue-700 font-mono">1 / 2 / 3</strong> : Throw Tomato / Egg / Balloon
@@ -303,6 +359,11 @@ export function MeetingHUD({
             <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 col-span-2">
               <strong className="text-blue-700 font-mono">V Key</strong> : Toggle Free Mouse Cursor
             </div>
+            {mapType === 'theatre' && (
+              <div className="bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 col-span-2 text-red-900">
+                <strong className="text-red-700 font-mono">L Key</strong> : Toggle Cinema Lights
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -314,7 +375,7 @@ export function MeetingHUD({
           <div className="pointer-events-auto bg-blue-600 text-white px-6 py-2.5 rounded-2xl shadow-2xl flex items-center gap-4 border-2 border-blue-300 animate-pulse">
             <div className="flex items-center gap-2 font-bold text-sm">
               <Armchair className="w-5 h-5 text-white" />
-              <span>You are seated in {currentSeatName || 'a conference chair'}</span>
+              <span>You are seated in {currentSeatName || (mapType === 'theatre' ? 'a cinema seat' : 'a conference chair')}</span>
             </div>
             <button
               onClick={onToggleSit}
@@ -359,7 +420,7 @@ export function MeetingHUD({
             </span>
           </button>
 
-          {/* Screen Share Button (Exclusivity: only one person can share at a time) */}
+          {/* Screen Share Button */}
           {(() => {
             const isAnotherPresenter = screenPresenter && screenPresenter.presenterId !== currentSocketId;
             return (
@@ -384,7 +445,7 @@ export function MeetingHUD({
                     ? 'Stop Screen Sharing'
                     : isAnotherPresenter
                     ? `Screen share in use by ${screenPresenter.presenterName} (1 presenter max)`
-                    : 'Share Screen (Cast to Presentation TV)'
+                    : 'Share Screen'
                 }
               >
                 <MonitorUp className="w-5 h-5" />
@@ -401,61 +462,106 @@ export function MeetingHUD({
 
           <div className="w-[1px] h-7 bg-gray-200 mx-1" />
 
-          {/* Presentation TV Direct View Mode */}
-          <button
-            onClick={() => onChangeViewMode(viewMode === 'presentation' ? 'fpp' : 'presentation')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              viewMode === 'presentation'
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white ring-2 ring-indigo-400 shadow-md shadow-indigo-600/20'
-                : screenPresenter
-                ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 animate-pulse'
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
-            }`}
-            title="Direct camera focus onto the Presentation Screen"
-          >
-            <Tv className="w-4 h-4 text-indigo-600" />
-            <span>
-              {viewMode === 'presentation'
-                ? 'Return to Character'
-                : screenPresenter
-                ? `View TV (${screenPresenter.presenterName})`
-                : 'Focus TV'}
-            </span>
-          </button>
-
-          {/* Collaborative Interactive Whiteboard Button */}
-          {(() => {
-            const isAnotherWhiteboardUser = whiteboardUser && whiteboardUser.userId !== currentSocketId;
-            return (
+          {/* MAP-SPECIFIC CONTROLS */}
+          {mapType === 'theatre' ? (
+            <>
+              {/* Cinema Viewing Mode */}
               <button
-                onClick={() => {
-                  if (isAnotherWhiteboardUser) {
-                    alert(`Whiteboard is currently in use by ${whiteboardUser.userName}. Only one person can draw at a time.`);
-                    return;
-                  }
-                  onOpenWhiteboard();
-                }}
-                disabled={isAnotherWhiteboardUser}
+                onClick={() => onChangeViewMode(viewMode === 'presentation' ? 'fpp' : 'presentation')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  isAnotherWhiteboardUser
-                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
-                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm'
+                  viewMode === 'presentation'
+                    ? 'bg-red-600 hover:bg-red-700 text-white ring-2 ring-red-400 shadow-md shadow-red-600/30'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                 }`}
-                title={
-                  isAnotherWhiteboardUser
-                    ? `Whiteboard in use by ${whiteboardUser.userName} (1 user max)`
-                    : 'Open Collaborative Whiteboard Drawing Studio'
-                }
+                title="Glide camera into prime cinema viewing position"
               >
-                <PenTool className="w-4 h-4 text-indigo-600" />
+                <Tv className="w-4 h-4 text-red-600" />
+                <span>{viewMode === 'presentation' ? 'Exit Cinema View' : 'Cinema View'}</span>
+              </button>
+
+              {/* Movie Player & Watch-Together Controls */}
+              <button
+                onClick={onOpenMoviePlayer}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 shadow-sm transition-all active:scale-95"
+                title="Open Synced Movie Player"
+              >
+                <Film className="w-4 h-4 text-red-600" />
+                <span>Movie Player</span>
+              </button>
+
+              {/* Interactive Theatre Lights Button */}
+              <button
+                onClick={onToggleTheatreLights}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                  theatreLightsOn
+                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 shadow-sm'
+                    : 'bg-slate-900 hover:bg-slate-800 text-yellow-300 border-slate-700 shadow-md ring-2 ring-yellow-400/30'
+                }`}
+                title="Toggle Cinema Lighting (Press L)"
+              >
+                <Lightbulb className={`w-4 h-4 ${theatreLightsOn ? 'text-amber-600' : 'text-yellow-300'}`} />
+                <span>{theatreLightsOn ? 'Lights: ON' : 'Cinema Mode'}</span>
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Office Presentation TV Direct View Mode */}
+              <button
+                onClick={() => onChangeViewMode(viewMode === 'presentation' ? 'fpp' : 'presentation')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === 'presentation'
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white ring-2 ring-indigo-400 shadow-md shadow-indigo-600/20'
+                    : screenPresenter
+                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 animate-pulse'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                }`}
+                title="Direct camera focus onto the Presentation Screen"
+              >
+                <Tv className="w-4 h-4 text-indigo-600" />
                 <span>
-                  {isAnotherWhiteboardUser
-                    ? `Board (${whiteboardUser.userName})`
-                    : 'Whiteboard'}
+                  {viewMode === 'presentation'
+                    ? 'Return to Character'
+                    : screenPresenter
+                    ? `View TV (${screenPresenter.presenterName})`
+                    : 'Focus TV'}
                 </span>
               </button>
-            );
-          })()}
+
+              {/* Collaborative Interactive Whiteboard Button */}
+              {(() => {
+                const isAnotherWhiteboardUser = whiteboardUser && whiteboardUser.userId !== currentSocketId;
+                return (
+                  <button
+                    onClick={() => {
+                      if (isAnotherWhiteboardUser) {
+                        alert(`Whiteboard is currently in use by ${whiteboardUser.userName}. Only one person can draw at a time.`);
+                        return;
+                      }
+                      onOpenWhiteboard();
+                    }}
+                    disabled={isAnotherWhiteboardUser}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      isAnotherWhiteboardUser
+                        ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
+                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm'
+                    }`}
+                    title={
+                      isAnotherWhiteboardUser
+                        ? `Whiteboard in use by ${whiteboardUser.userName} (1 user max)`
+                        : 'Open Collaborative Whiteboard Drawing Studio'
+                    }
+                  >
+                    <PenTool className="w-4 h-4 text-indigo-600" />
+                    <span>
+                      {isAnotherWhiteboardUser
+                        ? `Board (${whiteboardUser.userName})`
+                        : 'Whiteboard'}
+                    </span>
+                  </button>
+                );
+              })()}
+            </>
+          )}
 
           <div className="w-[1px] h-7 bg-gray-200 mx-1" />
 

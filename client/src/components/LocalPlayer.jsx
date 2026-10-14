@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { CharacterAvatar } from './CharacterAvatar';
+import { isTheatrePositionBlocked } from './MovieTheatre';
 
 /**
  * Bounds checking and collision obstacles:
@@ -34,7 +35,9 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
   videoStream = null,
   isCamActive = false,
   camZoom = 1.2,
-  activeEmoji = null
+  activeEmoji = null,
+  mapType = 'office',
+  collisionFn = null
 }, ref) {
   const keys = useKeyboardControls();
   const playerPos = useRef(new THREE.Vector3(0, 0, 5.0));
@@ -162,13 +165,19 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
   }, [gl, isCursorFree, isSitting, viewMode, camera, scene, pointer, r3fRaycaster]);
 
   useFrame((_, delta) => {
-    // 1. Presentation TV Close-Up Mode:
-    // When presentation mode is activated via the button, smoothly position camera directly in front of the TV
+    // 1. Presentation TV / Cinema Screen Close-Up Mode:
     if (viewMode === 'presentation') {
-      // TV center is at [0, 4.2, -11.6]. Place camera at [0, 4.2, -6.8] looking straight at [0, 4.2, -11.6]
-      const tvCamPos = new THREE.Vector3(0, 4.2, -6.8);
-      camera.position.lerp(tvCamPos, 0.08);
-      camera.lookAt(new THREE.Vector3(0, 4.2, -11.6));
+      if (mapType === 'theatre') {
+        // In Theatre: Cinema Screen center is at [0, 3.4, -10.2]. Place camera at [0, 2.3, -1.0] looking straight at [0, 3.4, -10.2]
+        const cinemaCamPos = new THREE.Vector3(0, 2.3, -1.0);
+        camera.position.lerp(cinemaCamPos, 0.08);
+        camera.lookAt(new THREE.Vector3(0, 3.4, -10.2));
+      } else {
+        // In Office: TV center is at [0, 4.2, -11.6]. Place camera at [0, 4.2, -6.8] looking straight at [0, 4.2, -11.6]
+        const tvCamPos = new THREE.Vector3(0, 4.2, -6.8);
+        camera.position.lerp(tvCamPos, 0.08);
+        camera.lookAt(new THREE.Vector3(0, 4.2, -11.6));
+      }
       return;
     }
 
@@ -210,13 +219,23 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
 
     // 3. Physics & Jump Mechanics (SPACEBAR exclusively for jumping):
     const gravity = 22.0;
-    const isOnTable =
-      playerPos.current.x > -1.8 &&
-      playerPos.current.x < 1.8 &&
-      playerPos.current.z > -3.5 &&
-      playerPos.current.z < 3.5;
+    let floorHeight = 0;
 
-    const floorHeight = isOnTable ? 1.15 : 0;
+    if (mapType === 'theatre') {
+      // Back row tier riser platform (Z between 1.1 and 3.9) or front stage (Z < -8.2)
+      if (playerPos.current.z > 1.1 && playerPos.current.z < 3.9 && Math.abs(playerPos.current.x) > 0.8) {
+        floorHeight = 0.44;
+      } else if (playerPos.current.z < -8.2) {
+        floorHeight = 0.44;
+      }
+    } else {
+      const isOnTable =
+        playerPos.current.x > -1.8 &&
+        playerPos.current.x < 1.8 &&
+        playerPos.current.z > -3.5 &&
+        playerPos.current.z < 3.5;
+      floorHeight = isOnTable ? 1.15 : 0;
+    }
 
     // Spacebar Jump
     if (keys.current.jump && isGrounded.current) {
@@ -273,7 +292,8 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
         Math.cos(playerRot.current) * forwardStep +
         Math.sin(playerRot.current) * strafeStep;
 
-      if (!isPositionBlocked(targetX, targetZ, playerPos.current.y)) {
+      const checkBlocked = collisionFn || (mapType === 'theatre' ? isTheatrePositionBlocked : isPositionBlocked);
+      if (!checkBlocked(targetX, targetZ, playerPos.current.y)) {
         playerPos.current.x = targetX;
         playerPos.current.z = targetZ;
       }

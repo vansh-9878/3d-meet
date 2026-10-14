@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { ContactShadows } from '@react-three/drei';
 import { io } from 'socket.io-client';
-import { Copy, Check, Users, Sparkles } from 'lucide-react';
+import { Copy, Check, Users, Sparkles, Film, Building2, Clapperboard } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ConferenceRoom, SEAT_POSITIONS } from './components/ConferenceRoom';
+import { MovieTheatre, THEATRE_SEAT_POSITIONS } from './components/MovieTheatre';
 import { LocalPlayer } from './components/LocalPlayer';
 import { RemotePlayer } from './components/RemotePlayer';
 import { AvatarCustomizer, AVATAR_PRESETS } from './components/AvatarCustomizer';
@@ -12,6 +13,7 @@ import { MeetingHUD } from './components/MeetingHUD';
 import { SplatterOverlay } from './components/SplatterOverlay';
 import { ProjectileSystem } from './components/ProjectileSystem';
 import { WhiteboardModal } from './components/WhiteboardModal';
+import { MoviePlayerModal } from './components/MoviePlayerModal';
 import { useWebRTC } from './hooks/useWebRTC';
 
 // Dynamically determine the socket URL:
@@ -25,10 +27,16 @@ const SOCKET_SERVER_URL =
     : 'http://localhost:4000');
 
 export default function App() {
-  // Read Room ID from URL query parameters (e.g. ?room=design-sprint), or default to 'main-office'
+  // Read Room ID & Map Type from URL query parameters
   const [roomId, setRoomId] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('room') || 'main-office';
+  });
+
+  const [mapType, setMapType] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const map = params.get('map');
+    return map === 'theatre' ? 'theatre' : 'office';
   });
 
   const [userName, setUserName] = useState(() => `Participant ${Math.floor(100 + Math.random() * 900)}`);
@@ -61,12 +69,25 @@ export default function App() {
   // Local Emoji Bubble (2-3 seconds)
   const [localEmoji, setLocalEmoji] = useState(null);
 
-  // Collaborative Whiteboard State
+  // Collaborative Whiteboard State (Office Map)
   const [whiteboardUser, setWhiteboardUser] = useState(null);
   const [whiteboardStrokes, setWhiteboardStrokes] = useState([]);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
 
-  // Local player ref for podium teleportation
+  // Movie Theatre Map State
+  const [theatreLightsOn, setTheatreLightsOn] = useState(true);
+  const [theatrePlayback, setTheatrePlayback] = useState({
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    isPlaying: false,
+    currentTime: 0,
+    lastUpdated: Date.now(),
+    playbackRate: 1,
+    updatedBy: ''
+  });
+  const [isMoviePlayerOpen, setIsMoviePlayerOpen] = useState(false);
+  const theatreVideoRef = useRef(null);
+
+  // Local player ref for podium / teleportation
   const localPlayerRef = useRef(null);
 
   // Network state
@@ -94,11 +115,13 @@ export default function App() {
   const avatarConfigRef = useRef(avatarConfig);
   const userNameRef = useRef(userName);
   const roomIdRef = useRef(roomId);
+  const mapTypeRef = useRef(mapType);
 
   useEffect(() => { hasEnteredRef.current = hasEntered; }, [hasEntered]);
   useEffect(() => { avatarConfigRef.current = avatarConfig; }, [avatarConfig]);
   useEffect(() => { userNameRef.current = userName; }, [userName]);
   useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
+  useEffect(() => { mapTypeRef.current = mapType; }, [mapType]);
   useEffect(() => {
     if (viewMode === 'presentation') {
       setIsCursorFree(true);
@@ -114,12 +137,14 @@ export default function App() {
       console.log(`[Socket Connected] Connected to server at ${SOCKET_SERVER_URL} (ID: ${s.id})`);
       if (hasEnteredRef.current) {
         const activeRoom = (roomIdRef.current && roomIdRef.current.trim()) ? roomIdRef.current.trim().toLowerCase() : 'main-office';
+        const spawn = mapTypeRef.current === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
         s.emit('join-room', {
           roomId: activeRoom,
+          mapType: mapTypeRef.current,
           user: {
             name: userNameRef.current,
             avatarConfig: avatarConfigRef.current,
-            position: [0, 0, 5.0],
+            position: spawn,
             rotation: Math.PI
           }
         });
@@ -127,7 +152,7 @@ export default function App() {
     });
 
     // Received participant list for the current room
-    s.on('room-users', ({ roomId: joinedRoomId, users, whiteboardUser: wbUser, whiteboardStrokes: wbStrokes }) => {
+    s.on('room-users', ({ roomId: joinedRoomId, mapType: serverMapType, users, whiteboardUser: wbUser, whiteboardStrokes: wbStrokes, theatreLighting, theatrePlayback: syncPlayback }) => {
       const peers = {};
       users.forEach((u) => {
         if (u.id !== s.id) {
@@ -135,8 +160,11 @@ export default function App() {
         }
       });
       setRemotePlayers(peers);
+      if (serverMapType) setMapType(serverMapType);
       if (wbUser !== undefined) setWhiteboardUser(wbUser);
       if (wbStrokes !== undefined) setWhiteboardStrokes(wbStrokes);
+      if (theatreLighting?.lightsOn !== undefined) setTheatreLightsOn(theatreLighting.lightsOn);
+      if (syncPlayback) setTheatrePlayback(syncPlayback);
     });
 
     // Remote teammate joined
@@ -292,6 +320,24 @@ export default function App() {
       alert(data.message || 'Whiteboard is currently occupied.');
     });
 
+    // Theatre lighting update
+    s.on('theatre-lights-changed', ({ lightsOn }) => {
+      setTheatreLightsOn(lightsOn);
+    });
+
+    // Theatre synchronized video playback update
+    s.on('theatre-playback-updated', (playbackData) => {
+      setTheatrePlayback(playbackData);
+    });
+
+    // Map changed broadcast from room
+    s.on('map-changed', ({ mapType: newMapType }) => {
+      setMapType(newMapType);
+      setCurrentSeat(null);
+      const spawn = newMapType === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
+      localPlayerRef.current?.teleport(spawn, Math.PI);
+    });
+
     // Teammate left room
     s.on('user-left', (socketId) => {
       setRemotePlayers((prev) => {
@@ -308,6 +354,62 @@ export default function App() {
     };
   }, []);
 
+  // Initialize background HTML5 <video> element for Theatre VideoTexture & audio
+  useEffect(() => {
+    let video = theatreVideoRef.current;
+    if (!video) {
+      video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.style.position = 'fixed';
+      video.style.top = '-9999px';
+      video.style.left = '-9999px';
+      video.style.width = '320px';
+      video.style.height = '180px';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      document.body.appendChild(video);
+      theatreVideoRef.current = video;
+    }
+
+    return () => {
+      if (video && video.parentNode) {
+        video.pause();
+        video.src = '';
+        video.parentNode.removeChild(video);
+      }
+    };
+  }, []);
+
+  // Synchronize local HTML5 video element with authoritative theatre playback state
+  useEffect(() => {
+    const video = theatreVideoRef.current;
+    if (!video) return;
+
+    if (theatrePlayback.videoUrl && video.src !== theatrePlayback.videoUrl) {
+      video.src = theatrePlayback.videoUrl;
+      video.load();
+    }
+
+    let targetTime = theatrePlayback.currentTime || 0;
+    if (theatrePlayback.isPlaying && theatrePlayback.lastUpdated) {
+      const elapsed = (Date.now() - theatrePlayback.lastUpdated) / 1000;
+      targetTime += elapsed * (theatrePlayback.playbackRate || 1);
+    }
+
+    if (Math.abs(video.currentTime - targetTime) > 1.2) {
+      video.currentTime = targetTime;
+    }
+
+    if (theatrePlayback.isPlaying) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [theatrePlayback]);
+
   // Join Room
   const handleJoinMeeting = (e) => {
     if (e) e.preventDefault();
@@ -317,15 +419,17 @@ export default function App() {
     setRoomId(sanitizedRoom);
 
     // Update browser URL query param without full page reload
-    const newUrl = `${window.location.pathname}?room=${encodeURIComponent(sanitizedRoom)}`;
+    const newUrl = `${window.location.pathname}?room=${encodeURIComponent(sanitizedRoom)}&map=${encodeURIComponent(mapType)}`;
     window.history.replaceState({ path: newUrl }, '', newUrl);
 
+    const spawn = mapType === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
     socket.emit('join-room', {
       roomId: sanitizedRoom,
+      mapType,
       user: {
         name: userName,
         avatarConfig,
-        position: [0, 0, 5.0],
+        position: spawn,
         rotation: Math.PI
       }
     });
@@ -521,6 +625,50 @@ export default function App() {
     }
   };
 
+  // Active map seats
+  const currentMapSeats = mapType === 'theatre' ? THEATRE_SEAT_POSITIONS : SEAT_POSITIONS;
+
+  // Toggle theatre lights
+  const handleToggleTheatreLights = () => {
+    setTheatreLightsOn((prev) => !prev);
+    if (socket) {
+      socket.emit('theatre-toggle-lights');
+    }
+  };
+
+  // Synchronized theatre video controls
+  const handleTheatreVideoControl = (controlData) => {
+    if (socket) {
+      socket.emit('theatre-video-control', controlData);
+    }
+  };
+
+  // Switch map environment between Boardroom and Theatre
+  const handleSwitchMap = () => {
+    const nextMap = mapType === 'theatre' ? 'office' : 'theatre';
+    setMapType(nextMap);
+    handleStandUp();
+
+    // Update URL query parameters
+    const params = new URLSearchParams(window.location.search);
+    params.set('map', nextMap);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({ path: newUrl }, '', newUrl);
+
+    // Teleport local player to entrance of the new map
+    const spawn = nextMap === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
+    localPlayerRef.current?.teleport(spawn, Math.PI);
+
+    if (socket) {
+      socket.emit('change-map', { mapType: nextMap });
+      socket.emit('player-move', {
+        position: spawn,
+        rotation: Math.PI,
+        state: 'idle'
+      });
+    }
+  };
+
   // Send reaction to entire room
   const handleReaction = (reaction) => {
     if (socket) {
@@ -530,7 +678,7 @@ export default function App() {
 
   // Copy shareable link from lobby
   const handleCopyLobbyInvite = () => {
-    const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(roomId || 'main-office')}`;
+    const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(roomId || 'main-office')}&map=${encodeURIComponent(mapType)}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopiedLobbyLink(true);
     setTimeout(() => setCopiedLobbyLink(false), 2500);
@@ -647,11 +795,61 @@ export default function App() {
               </div>
             </div>
 
+            {/* 3D Environment Map Selector */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                Select 3D Environment
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* Executive Boardroom Option */}
+                <button
+                  type="button"
+                  onClick={() => setMapType('office')}
+                  className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
+                    mapType === 'office'
+                      ? 'bg-blue-50/90 border-2 border-blue-600 shadow-md ring-2 ring-blue-500/20'
+                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building2 className={`w-4 h-4 ${mapType === 'office' ? 'text-blue-600' : 'text-gray-500'}`} />
+                    <span className="font-extrabold text-xs text-gray-900">Executive Boardroom</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-tight">
+                    Meeting table, 8 swivel chairs, presentation TV & interactive whiteboard.
+                  </p>
+                </button>
+
+                {/* Movie Theatre Option */}
+                <button
+                  type="button"
+                  onClick={() => setMapType('theatre')}
+                  className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
+                    mapType === 'theatre'
+                      ? 'bg-red-50/90 border-2 border-red-600 shadow-md ring-2 ring-red-500/20'
+                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Film className={`w-4 h-4 ${mapType === 'theatre' ? 'text-red-600' : 'text-gray-500'}`} />
+                    <span className="font-extrabold text-xs text-gray-900">Movie Theatre</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-tight">
+                    Private cinema with 8 tiered velvet seats, cinema screen & synchronized video player.
+                  </p>
+                </button>
+              </div>
+            </div>
+
             <button
               type="submit"
-              className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-extrabold text-sm shadow-xl shadow-blue-600/30 transition-all transform active:scale-98 mt-2"
+              className={`w-full py-3.5 px-4 rounded-xl text-white font-extrabold text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
+                mapType === 'theatre'
+                  ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
+              }`}
             >
-              Enter Virtual Office Room
+              {mapType === 'theatre' ? 'Enter Movie Theatre' : 'Enter Executive Boardroom'}
             </button>
           </form>
 
@@ -675,44 +873,63 @@ export default function App() {
         camera={{ position: [0, 1.62, 5.0], fov: 60 }}
         className="w-full h-full"
       >
-        <ambientLight intensity={1.5} />
-        
-        <directionalLight
-          position={[10, 15, 6]}
-          intensity={2.2}
-          castShadow
-          shadow-mapSize-width={2048}
-          shadow-mapSize-height={2048}
-          shadow-camera-near={0.5}
-          shadow-camera-far={35}
-          shadow-camera-left={-14}
-          shadow-camera-right={14}
-          shadow-camera-top={14}
-          shadow-camera-bottom={-14}
-          color="#fffbf0"
-        />
+        {mapType === 'theatre' ? (
+          <MovieTheatre
+            videoRef={theatreVideoRef}
+            videoUrl={theatrePlayback.videoUrl}
+            isPlaying={theatrePlayback.isPlaying}
+            currentTime={theatrePlayback.currentTime}
+            onOpenPlayer={() => {
+              setIsCursorFree(true);
+              setIsMoviePlayerOpen(true);
+            }}
+            lightsOn={theatreLightsOn}
+            onToggleLights={handleToggleTheatreLights}
+            onSeatSelect={handleSeatSelect}
+            currentSeatId={currentSeat?.id}
+            occupiedSeatIds={occupiedSeatIds}
+            hoveredSeatId={hoveredSeatId}
+            isCursorFree={isCursorFree}
+          />
+        ) : (
+          <>
+            <ambientLight intensity={1.5} />
+            <directionalLight
+              position={[10, 15, 6]}
+              intensity={2.2}
+              castShadow
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+              shadow-camera-near={0.5}
+              shadow-camera-far={35}
+              shadow-camera-left={-14}
+              shadow-camera-right={14}
+              shadow-camera-top={14}
+              shadow-camera-bottom={-14}
+              color="#fffbf0"
+            />
+            <directionalLight
+              position={[-10, 10, -6]}
+              intensity={0.9}
+              color="#e0f2fe"
+            />
+            <pointLight position={[0, 4.5, 0]} intensity={1.2} color="#fef3c7" distance={16} />
 
-        <directionalLight
-          position={[-10, 10, -6]}
-          intensity={0.9}
-          color="#e0f2fe"
-        />
-
-        <pointLight position={[0, 4.5, 0]} intensity={1.2} color="#fef3c7" distance={16} />
-
-        <ConferenceRoom
-          onSeatSelect={handleSeatSelect}
-          currentSeatId={currentSeat?.id}
-          isCursorFree={isCursorFree}
-          screenStream={screenStream || screenPresenter?.stream}
-          presenterName={screenPresenter?.presenterName}
-          hoveredSeatId={hoveredSeatId}
-          occupiedSeatIds={occupiedSeatIds}
-          whiteboardStrokes={whiteboardStrokes}
-          whiteboardUser={whiteboardUser}
-          currentSocketId={socket?.id}
-          onOpenWhiteboard={handleOpenWhiteboard}
-        />
+            <ConferenceRoom
+              onSeatSelect={handleSeatSelect}
+              currentSeatId={currentSeat?.id}
+              isCursorFree={isCursorFree}
+              screenStream={screenStream || screenPresenter?.stream}
+              presenterName={screenPresenter?.presenterName}
+              hoveredSeatId={hoveredSeatId}
+              occupiedSeatIds={occupiedSeatIds}
+              whiteboardStrokes={whiteboardStrokes}
+              whiteboardUser={whiteboardUser}
+              currentSocketId={socket?.id}
+              onOpenWhiteboard={handleOpenWhiteboard}
+            />
+          </>
+        )}
 
         <ProjectileSystem
           ref={projectileSystemRef}
@@ -743,6 +960,7 @@ export default function App() {
           isCamActive={isCamActive}
           camZoom={camZoom}
           activeEmoji={localEmoji}
+          mapType={mapType}
         />
 
         {/* Real-time Multiplayer Remote Participants */}
@@ -804,6 +1022,8 @@ export default function App() {
       {/* Floating HUD & Conference Controls */}
       <MeetingHUD
         roomId={roomId}
+        mapType={mapType}
+        onSwitchMap={handleSwitchMap}
         participantCount={Object.keys(remotePlayers).length + 1}
         userName={userName}
         currentSocketId={socket?.id}
@@ -813,7 +1033,7 @@ export default function App() {
           if (currentSeat) {
             handleStandUp();
           } else {
-            handleSeatSelect(SEAT_POSITIONS[0]);
+            handleSeatSelect(currentMapSeats[0]);
           }
         }}
         viewMode={viewMode}
@@ -855,6 +1075,12 @@ export default function App() {
         }
         whiteboardUser={whiteboardUser}
         onOpenWhiteboard={handleOpenWhiteboard}
+        theatreLightsOn={theatreLightsOn}
+        onToggleTheatreLights={handleToggleTheatreLights}
+        onOpenMoviePlayer={() => {
+          setIsCursorFree(true);
+          setIsMoviePlayerOpen(true);
+        }}
       />
 
       {/* Fullscreen Hit Splatter Overlay (Tomato, Egg, Water Balloon) */}
@@ -868,12 +1094,25 @@ export default function App() {
         onChange={handleAvatarChange}
       />
 
-      {/* Collaborative Interactive Whiteboard Studio Modal */}
-      <WhiteboardModal
-        isOpen={isWhiteboardOpen}
-        onClose={handleCloseWhiteboard}
-        onDraw={handleWhiteboardDraw}
-        strokes={whiteboardStrokes}
+      {/* Collaborative Interactive Whiteboard Studio Modal (Office Map) */}
+      {mapType === 'office' && (
+        <WhiteboardModal
+          isOpen={isWhiteboardOpen}
+          onClose={handleCloseWhiteboard}
+          onDraw={handleWhiteboardDraw}
+          strokes={whiteboardStrokes}
+        />
+      )}
+
+      {/* Synchronized Watch-Together Movie Player Panel (Movie Theatre Map) */}
+      <MoviePlayerModal
+        isOpen={isMoviePlayerOpen}
+        onClose={() => setIsMoviePlayerOpen(false)}
+        playbackState={theatrePlayback}
+        onControl={handleTheatreVideoControl}
+        videoElement={theatreVideoRef.current}
+        isCinemaView={viewMode === 'presentation'}
+        onToggleCinemaView={() => setViewMode(viewMode === 'presentation' ? 'fpp' : 'presentation')}
       />
     </div>
   );
