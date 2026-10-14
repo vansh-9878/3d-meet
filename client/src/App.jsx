@@ -77,7 +77,7 @@ export default function App() {
   // Movie Theatre Map State
   const [theatreLightsOn, setTheatreLightsOn] = useState(true);
   const [theatrePlayback, setTheatrePlayback] = useState({
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    videoUrl: '',
     isPlaying: false,
     currentTime: 0,
     lastUpdated: Date.now(),
@@ -160,7 +160,10 @@ export default function App() {
         }
       });
       setRemotePlayers(peers);
-      if (serverMapType) setMapType(serverMapType);
+      // Only inherit server map type if there are other participants already in the room
+      if (serverMapType && Object.keys(peers).length > 0) {
+        setMapType(serverMapType);
+      }
       if (wbUser !== undefined) setWhiteboardUser(wbUser);
       if (wbStrokes !== undefined) setWhiteboardStrokes(wbStrokes);
       if (theatreLighting?.lightsOn !== undefined) setTheatreLightsOn(theatreLighting.lightsOn);
@@ -690,17 +693,51 @@ export default function App() {
     setRoomId(randId);
   };
 
+  // Leave current meeting room and return cleanly to lobby
+  const handleLeaveMeeting = () => {
+    if (socket) {
+      socket.emit('leave-room');
+    }
+    handleStandUp();
+    setHasEntered(false);
+    setIsCursorFree(false);
+    setViewMode('fpp');
+    setIsMoviePlayerOpen(false);
+    setIsWhiteboardOpen(false);
+    setIsCustomizerOpen(false);
+    setRemotePlayers({});
+
+    // Keep URL parameter synced to chosen map
+    const params = new URLSearchParams(window.location.search);
+    params.set('map', mapType);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({ path: newUrl }, '', newUrl);
+  };
+
+  // Select map in lobby and update URL query param
+  const handleSelectLobbyMap = (chosenMap) => {
+    setMapType(chosenMap);
+    const params = new URLSearchParams(window.location.search);
+    params.set('map', chosenMap);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({ path: newUrl }, '', newUrl);
+  };
+
   // Join Lobby Screen
   if (!hasEntered) {
     return (
-      <div className="relative w-screen h-screen bg-slate-900 flex items-center justify-center font-sans overflow-hidden">
-        <div className="relative z-10 w-full max-w-lg bg-white border border-gray-300 rounded-3xl p-8 shadow-2xl">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold uppercase tracking-wider mb-3">
-              Phase 2 • Real-Time Multiplayer Office
+      <div className="relative w-screen h-screen bg-slate-950 flex items-center justify-center font-sans overflow-hidden">
+        {/* Subtle Ambient Color Spheres */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 w-full max-w-lg bg-slate-900 border-2 border-slate-700 rounded-3xl p-7 shadow-2xl text-white">
+          <div className="text-center mb-5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-950 border border-blue-800 text-blue-300 text-xs font-bold uppercase tracking-wider mb-2.5">
+              Phase 2 • Real-Time 3D Virtual Workspace
             </div>
-            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Virtual 3D Conference</h1>
-            <p className="text-xs text-gray-600 font-medium mt-1">
+            <h1 className="text-2xl font-black text-white tracking-tight">Virtual 3D Conference</h1>
+            <p className="text-xs text-slate-400 font-medium mt-1">
               Join with teammates on the same Wi-Fi, hotspot, or local network.
             </p>
           </div>
@@ -709,13 +746,13 @@ export default function App() {
             {/* Room ID Input & Generator */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
                   Room Name or Unique ID
                 </label>
                 <button
                   type="button"
                   onClick={handleGenerateRandomRoom}
-                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                  className="text-[11px] font-bold text-blue-400 hover:text-blue-300 underline"
                 >
                   Generate Random
                 </button>
@@ -726,36 +763,33 @@ export default function App() {
                   value={roomId}
                   onChange={(e) => setRoomId(e.target.value)}
                   required
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-sm font-semibold"
-                  placeholder="e.g. design-sprint, team-standup"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                  placeholder="e.g. design-sprint, movie-night"
                 />
                 <button
                   type="button"
                   onClick={handleCopyLobbyInvite}
-                  className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-xl text-gray-700 text-xs font-bold flex items-center gap-1.5 transition-all"
+                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all"
                   title="Copy shareable room invite link"
                 >
                   {copiedLobbyLink ? (
                     <>
-                      <Check className="w-4 h-4 text-emerald-600" />
-                      <span className="text-emerald-700 font-bold">Copied!</span>
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-400 font-bold">Copied!</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-4 h-4 text-gray-600" />
+                      <Copy className="w-4 h-4 text-slate-400" />
                       <span>Copy Link</span>
                     </>
                   )}
                 </button>
               </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Anyone opening this link or joining this Room ID will enter the same 3D room with you.
-              </p>
             </div>
 
             {/* Display Name Input */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
                 Your Display Name
               </label>
               <input
@@ -763,14 +797,14 @@ export default function App() {
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-sm font-semibold"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
                 placeholder="e.g. Sarah Jenkins"
               />
             </div>
 
             {/* Outfit Preset Selector */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
                 Select Outfit Preset
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -781,12 +815,12 @@ export default function App() {
                     onClick={() => setAvatarConfig(preset)}
                     className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs font-semibold transition-all ${
                       avatarConfig.suitColor === preset.suitColor
-                        ? 'bg-blue-50 border-2 border-blue-600 text-blue-900 shadow-sm'
-                        : 'bg-gray-50 border-gray-300 text-gray-800 hover:bg-gray-100'
+                        ? 'bg-blue-950 border-2 border-blue-500 text-blue-200 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
                     <div
-                      className="w-4 h-4 rounded-full border border-gray-300 shrink-0"
+                      className="w-4 h-4 rounded-full border border-slate-600 shrink-0"
                       style={{ backgroundColor: preset.suitColor }}
                     />
                     <span className="truncate">{preset.name}</span>
@@ -797,25 +831,25 @@ export default function App() {
 
             {/* 3D Environment Map Selector */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
                 Select 3D Environment
               </label>
               <div className="grid grid-cols-2 gap-2.5">
                 {/* Executive Boardroom Option */}
                 <button
                   type="button"
-                  onClick={() => setMapType('office')}
+                  onClick={() => handleSelectLobbyMap('office')}
                   className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
                     mapType === 'office'
-                      ? 'bg-blue-50/90 border-2 border-blue-600 shadow-md ring-2 ring-blue-500/20'
-                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
+                      ? 'bg-blue-950/80 border-2 border-blue-500 shadow-md ring-2 ring-blue-500/20'
+                      : 'bg-slate-950 border-slate-800 hover:bg-slate-800 opacity-70'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <Building2 className={`w-4 h-4 ${mapType === 'office' ? 'text-blue-600' : 'text-gray-500'}`} />
-                    <span className="font-extrabold text-xs text-gray-900">Executive Boardroom</span>
+                    <Building2 className={`w-4 h-4 ${mapType === 'office' ? 'text-blue-400' : 'text-slate-400'}`} />
+                    <span className="font-extrabold text-xs text-white">Executive Boardroom</span>
                   </div>
-                  <p className="text-[11px] text-gray-600 leading-tight">
+                  <p className="text-[11px] text-slate-400 leading-tight">
                     Meeting table, 8 swivel chairs, presentation TV & interactive whiteboard.
                   </p>
                 </button>
@@ -823,19 +857,19 @@ export default function App() {
                 {/* Movie Theatre Option */}
                 <button
                   type="button"
-                  onClick={() => setMapType('theatre')}
+                  onClick={() => handleSelectLobbyMap('theatre')}
                   className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
                     mapType === 'theatre'
-                      ? 'bg-red-50/90 border-2 border-red-600 shadow-md ring-2 ring-red-500/20'
-                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
+                      ? 'bg-red-950/80 border-2 border-red-500 shadow-md ring-2 ring-red-500/20'
+                      : 'bg-slate-950 border-slate-800 hover:bg-slate-800 opacity-70'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <Film className={`w-4 h-4 ${mapType === 'theatre' ? 'text-red-600' : 'text-gray-500'}`} />
-                    <span className="font-extrabold text-xs text-gray-900">Movie Theatre</span>
+                    <Film className={`w-4 h-4 ${mapType === 'theatre' ? 'text-red-400' : 'text-slate-400'}`} />
+                    <span className="font-extrabold text-xs text-white">Movie Theatre</span>
                   </div>
-                  <p className="text-[11px] text-gray-600 leading-tight">
-                    Private cinema with 8 tiered velvet seats, cinema screen & synchronized video player.
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Private cinema with elevated tiered velvet seats, cinema screen & media player.
                   </p>
                 </button>
               </div>
@@ -843,17 +877,17 @@ export default function App() {
 
             <button
               type="submit"
-              className={`w-full py-3.5 px-4 rounded-xl text-white font-extrabold text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
+              className={`w-full py-3.5 px-4 rounded-xl text-white font-black text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
                 mapType === 'theatre'
-                  ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
-                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
+                  ? 'bg-red-600 hover:bg-red-500 shadow-red-600/30'
+                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
               }`}
             >
               {mapType === 'theatre' ? 'Enter Movie Theatre' : 'Enter Executive Boardroom'}
             </button>
           </form>
 
-          <div className="mt-5 pt-4 border-t border-gray-200 text-center text-xs font-medium text-gray-500">
+          <div className="mt-4 pt-3.5 border-t border-slate-800 text-center text-xs font-medium text-slate-500">
             Share your invite link with others on your hotspot/Wi-Fi to join together!
           </div>
         </div>
@@ -863,7 +897,7 @@ export default function App() {
 
   return (
     <div
-      className={`relative w-screen h-screen bg-slate-100 overflow-hidden font-sans ${
+      className={`relative w-screen h-screen bg-slate-950 overflow-hidden font-sans ${
         !isCursorFree && viewMode === 'fpp' ? 'cursor-none' : 'cursor-default'
       }`}
     >
@@ -873,6 +907,8 @@ export default function App() {
         camera={{ position: [0, 1.62, 5.0], fov: 60 }}
         className="w-full h-full"
       >
+        <color attach="background" args={[mapType === 'theatre' ? '#07070a' : '#0b1329']} />
+
         {mapType === 'theatre' ? (
           <MovieTheatre
             videoRef={theatreVideoRef}
@@ -890,6 +926,7 @@ export default function App() {
             occupiedSeatIds={occupiedSeatIds}
             hoveredSeatId={hoveredSeatId}
             isCursorFree={isCursorFree}
+            screenStream={screenStream || screenPresenter?.stream}
           />
         ) : (
           <>
@@ -1048,7 +1085,7 @@ export default function App() {
           setIsCustomizerOpen(true);
         }}
         onReaction={handleReaction}
-        onLeaveMeeting={() => setHasEntered(false)}
+        onLeaveMeeting={handleLeaveMeeting}
         isCursorFree={isCursorFree}
         onToggleCursorFree={handleToggleCursor}
         isMicActive={isMicActive}
@@ -1081,6 +1118,7 @@ export default function App() {
           setIsCursorFree(true);
           setIsMoviePlayerOpen(true);
         }}
+        isModalOpen={isMoviePlayerOpen || isWhiteboardOpen || isCustomizerOpen}
       />
 
       {/* Fullscreen Hit Splatter Overlay (Tomato, Egg, Water Balloon) */}
@@ -1113,6 +1151,10 @@ export default function App() {
         videoElement={theatreVideoRef.current}
         isCinemaView={viewMode === 'presentation'}
         onToggleCinemaView={() => setViewMode(viewMode === 'presentation' ? 'fpp' : 'presentation')}
+        isScreenSharing={isScreenSharing}
+        screenPresenter={screenPresenter}
+        onToggleScreenShare={toggleScreenShare}
+        currentSocketId={socket?.id}
       />
     </div>
   );

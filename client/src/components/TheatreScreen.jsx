@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Film, Play, Volume2, Sparkles } from 'lucide-react';
 
 /**
  * TheatreScreen:
- * - Large 16:9 cinema screen wall-mounted at the front of the Movie Theatre.
- * - Renders active video via THREE.VideoTexture when videoUrl is playing/loaded.
- * - Displays a sleek cinema marquee banner when idle.
- * - Emits soft dynamic screen bounce light onto the stage and seats.
- * - Interactive: clicking or aiming at the screen opens the movie player.
+ * - Massive 16:9 cinema screen at front of Movie Theatre ([0, 3.4, -10.2]).
+ * - Displays live WebRTC screen sharing when active (screenStream).
+ * - Displays local video or loaded movie via THREE.VideoTexture when videoUrl is active.
+ * - Displays a high-contrast cinematic marquee banner when idle.
+ * - Emits dynamic screen bounce lighting onto the room.
+ * - Click / raycast interactive: opens Movie Player / Screen Projector modal.
  */
 export function TheatreScreen({
   videoRef,
@@ -18,14 +17,78 @@ export function TheatreScreen({
   currentTime,
   onOpenPlayer,
   isCinemaMode = false,
+  screenStream = null,
   width = 11.2,
   height = 6.3
 }) {
   const [videoTexture, setVideoTexture] = useState(null);
+  const [screenTexture, setScreenTexture] = useState(null);
   const [hasVideoError, setHasVideoError] = useState(false);
   const meshRef = useRef(null);
+  const screenVideoRef = useRef(null);
 
-  // Set up VideoTexture from the shared HTML5 video element
+  // 1. Handle live screen sharing stream (WebRTC)
+  useEffect(() => {
+    let video = screenVideoRef.current;
+    if (!video) {
+      video = document.createElement('video');
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.setAttribute('muted', '');
+      video.style.position = 'fixed';
+      video.style.top = '-9999px';
+      video.style.left = '-9999px';
+      video.style.width = '640px';
+      video.style.height = '360px';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      document.body.appendChild(video);
+      screenVideoRef.current = video;
+    }
+
+    if (screenStream) {
+      video.srcObject = screenStream;
+      const handlePlay = () => {
+        setScreenTexture((prev) => {
+          if (!prev) {
+            const texture = new THREE.VideoTexture(video);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.format = THREE.RGBAFormat;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.generateMipmaps = false;
+            return texture;
+          }
+          return prev;
+        });
+      };
+
+      video.addEventListener('loadedmetadata', () => {
+        video.play().then(handlePlay).catch((e) => console.warn('Theatre screen share auto-play prevented:', e));
+      });
+      video.addEventListener('playing', handlePlay);
+      video.addEventListener('loadeddata', handlePlay);
+      video.addEventListener('canplay', handlePlay);
+
+      video.play().then(handlePlay).catch(() => {});
+    } else {
+      if (video) {
+        video.srcObject = null;
+      }
+      setScreenTexture(null);
+    }
+
+    return () => {
+      if (video) {
+        video.srcObject = null;
+      }
+    };
+  }, [screenStream]);
+
+  // 2. Handle movie / local video element
   useEffect(() => {
     const video = videoRef?.current;
     if (!video || !videoUrl) {
@@ -70,7 +133,7 @@ export function TheatreScreen({
     };
   }, [videoRef, videoUrl]);
 
-  // Set up raycast interaction for clicking the screen to open the movie player
+  // Click & raycast interaction
   useEffect(() => {
     if (meshRef.current) {
       meshRef.current.userData = {
@@ -82,6 +145,10 @@ export function TheatreScreen({
     }
   }, [onOpenPlayer]);
 
+  // Screen share takes priority if present, otherwise local video
+  const activeTexture = screenTexture || (videoTexture && !hasVideoError ? videoTexture : null);
+  const isScreenActive = !!activeTexture;
+
   return (
     <group position={[0, 3.4, -10.2]}>
       {/* 1. Outer Dark Cinema Bevel Frame */}
@@ -90,7 +157,7 @@ export function TheatreScreen({
         <meshStandardMaterial color="#09090b" roughness={0.7} metalness={0.8} />
       </mesh>
 
-      {/* Inner Accent Trim / Border */}
+      {/* Inner Accent Gold/Charcoal Trim */}
       <mesh position={[0, 0, -0.01]}>
         <boxGeometry args={[width + 0.12, height + 0.12, 0.08]} />
         <meshStandardMaterial color="#18181b" roughness={0.4} metalness={0.9} />
@@ -108,15 +175,15 @@ export function TheatreScreen({
         }}
       >
         <planeGeometry args={[width, height]} />
-        {videoTexture && !hasVideoError ? (
+        {activeTexture ? (
           <meshBasicMaterial
-            map={videoTexture}
+            map={activeTexture}
             toneMapped={false}
           />
         ) : (
           <meshStandardMaterial
-            color="#0b0f19"
-            roughness={0.3}
+            color="#09090b"
+            roughness={0.2}
             metalness={0.1}
             emissive={isCinemaMode ? '#1e1b4b' : '#0f172a'}
             emissiveIntensity={isCinemaMode ? 0.35 : 0.15}
@@ -124,59 +191,58 @@ export function TheatreScreen({
         )}
       </mesh>
 
-      {/* 3. Idle Marquee Display when no video is playing */}
-      {(!videoTexture || hasVideoError) && (
+      {/* 3. High-Contrast Cinema Marquee Display when idle */}
+      {!isScreenActive && (
         <group position={[0, 0, 0.06]}>
-          {/* Subtle Backing Canvas Effect */}
+          {/* Deep Solid Backing Surface */}
           <mesh>
             <planeGeometry args={[width * 0.94, height * 0.9]} />
             <meshBasicMaterial color="#090d16" />
           </mesh>
 
-          {/* Golden / Cyan Cinematic Emblem */}
-          <group position={[0, 0.4, 0.02]}>
-            {/* Film Reel Decorative Ring */}
+          {/* Film Reel Center Emblem */}
+          <group position={[0, 0.5, 0.02]}>
             <mesh>
-              <ringGeometry args={[0.7, 0.82, 32]} />
+              <ringGeometry args={[0.75, 0.88, 36]} />
               <meshBasicMaterial color="#38bdf8" />
             </mesh>
             <mesh position={[0, 0, 0.01]}>
-              <circleGeometry args={[0.55, 32]} />
-              <meshBasicMaterial color="#0369a1" />
+              <circleGeometry args={[0.6, 36]} />
+              <meshBasicMaterial color="#0284c7" />
             </mesh>
-            {/* Play Symbol in Center */}
-            <mesh position={[0.06, 0, 0.02]} rotation={[0, 0, -Math.PI / 2]}>
-              <coneGeometry args={[0.26, 0.45, 3]} />
-              <meshBasicMaterial color="#f8fafc" />
+            {/* Play Symbol */}
+            <mesh position={[0.08, 0, 0.02]} rotation={[0, 0, -Math.PI / 2]}>
+              <coneGeometry args={[0.28, 0.48, 3]} />
+              <meshBasicMaterial color="#ffffff" />
             </mesh>
           </group>
 
-          {/* Under-Emblem Cinema Welcome Banner Line */}
-          <mesh position={[0, -0.65, 0.02]}>
-            <boxGeometry args={[4.2, 0.04, 0.01]} />
-            <meshBasicMaterial color="#e0f2fe" />
+          {/* Banner Horizontal Divider */}
+          <mesh position={[0, -0.6, 0.02]}>
+            <boxGeometry args={[4.5, 0.04, 0.01]} />
+            <meshBasicMaterial color="#38bdf8" />
           </mesh>
 
-          {/* Click to open player cue pill */}
+          {/* Interactive Screen Button Cue */}
           <mesh position={[0, -1.2, 0.02]}>
-            <boxGeometry args={[3.2, 0.45, 0.01]} />
-            <meshBasicMaterial color="#2563eb" />
+            <boxGeometry args={[3.8, 0.55, 0.01]} />
+            <meshBasicMaterial color="#ef4444" />
           </mesh>
         </group>
       )}
 
-      {/* 4. Dynamic Screen Bounce Light onto Stage and Front Seats */}
+      {/* 4. Dynamic Screen Bounce Light onto Stage and Seats */}
       {isCinemaMode && (
         <pointLight
           position={[0, -0.5, 1.8]}
-          intensity={isPlaying ? 1.6 : 0.6}
-          distance={14}
-          color={isPlaying ? '#e0f2fe' : '#6366f1'}
+          intensity={isScreenActive ? 1.8 : 0.4}
+          distance={15}
+          color={isScreenActive ? '#e0f2fe' : '#6366f1'}
           decay={1.8}
         />
       )}
 
-      {/* 5. Soundbar Speaker Grille beneath Screen */}
+      {/* 5. Cinema Soundbar beneath Screen */}
       <group position={[0, -height / 2 - 0.16, 0.02]}>
         <mesh castShadow>
           <boxGeometry args={[width * 0.75, 0.14, 0.1]} />

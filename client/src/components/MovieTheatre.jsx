@@ -17,17 +17,17 @@ export const THEATRE_SEAT_POSITIONS = [
   { id: 'theatre-seat-3', position: [1.4, 0.45, -2.5], rotation: Math.PI, label: 'Front Row A3' },
   { id: 'theatre-seat-4', position: [3.8, 0.45, -2.5], rotation: Math.PI, label: 'Front Row A4' },
 
-  // Back Row (Raised Tier Riser, Y = 0.90)
-  { id: 'theatre-seat-5', position: [-3.8, 0.9, 2.5], rotation: Math.PI, label: 'Balcony Row B1' },
-  { id: 'theatre-seat-6', position: [-1.4, 0.9, 2.5], rotation: Math.PI, label: 'Balcony Row B2' },
-  { id: 'theatre-seat-7', position: [1.4, 0.9, 2.5], rotation: Math.PI, label: 'Balcony Row B3' },
-  { id: 'theatre-seat-8', position: [3.8, 0.9, 2.5], rotation: Math.PI, label: 'Balcony Row B4' },
+  // Back Row (Elevated Stadium Riser Platform, Y = 1.50)
+  { id: 'theatre-seat-5', position: [-3.8, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B1' },
+  { id: 'theatre-seat-6', position: [-1.4, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B2' },
+  { id: 'theatre-seat-7', position: [1.4, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B3' },
+  { id: 'theatre-seat-8', position: [3.8, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B4' },
 ];
 
 /**
  * Collision bounds checking for Movie Theatre:
  * - Room bounds: X in [-7.4, 7.4], Z in [-8.8, 9.8]
- * - Stage platform: Z < -8.2 is blocked unless player is above 0.45m
+ * - Stage platform: Z < -8.2 is blocked unless player is above 0.42m
  * - Seat rows: block walking directly through seat bases, leaving wide center aisle (|X| < 1.0)
  */
 export function isTheatrePositionBlocked(x, z, y) {
@@ -41,13 +41,17 @@ export function isTheatrePositionBlocked(x, z, y) {
 
   // Row 1 Seats (Z between -3.0 and -2.0)
   if (z > -3.0 && z < -2.0 && Math.abs(x) > 0.9) {
-    if (y < 0.5) return true;
+    if (y < 0.55) return true;
   }
 
-  // Row 2 Tier Platform & Seats (Z between 1.1 and 3.9)
-  // Riser step is at Z = 1.1 with central stairs
-  if (z > 1.8 && z < 3.2 && Math.abs(x) > 0.9) {
-    if (y < 0.95) return true;
+  // Row 2 Elevated Riser Platform (Z between 1.1 and 4.3)
+  if (z >= 1.1 && z < 4.3 && Math.abs(x) > 0.9) {
+    if (y < 1.0) return true;
+  }
+
+  // Row 2 Seats (Z between 2.1 and 3.4)
+  if (z > 2.1 && z < 3.4 && Math.abs(x) > 0.9) {
+    if (y < 1.55) return true;
   }
 
   return false;
@@ -74,7 +78,8 @@ export function MovieTheatre({
   currentSeatId = null,
   occupiedSeatIds = {},
   hoveredSeatId = null,
-  isCursorFree = false
+  isCursorFree = false,
+  screenStream = null
 }) {
   const switchMeshRef = useRef(null);
 
@@ -293,25 +298,46 @@ export function MovieTheatre({
         currentTime={currentTime}
         onOpenPlayer={onOpenPlayer}
         isCinemaMode={!lightsOn}
+        screenStream={screenStream}
       />
 
       {/* ============================================================== */}
-      {/* 5. TIERED RISER PLATFORM FOR BACK ROW SEATS                   */}
+      {/* 5. TIERED ELEVATED RISER PLATFORM FOR BACK ROW SEATS          */}
       {/* ============================================================== */}
-      {/* Raised Riser for Row 2 (Seats 5-8) */}
-      <group position={[0, 0.22, 2.5]}>
+      {/* Intermediate Access Step (h = 0.52m) */}
+      <group position={[0, 0.26, 0.8]}>
         <mesh castShadow receiveShadow>
-          <boxGeometry args={[11.5, 0.44, 2.8]} />
+          <boxGeometry args={[11.5, 0.52, 0.6]} />
           <meshStandardMaterial color="#450a0a" roughness={0.85} />
         </mesh>
-        {/* Gold Riser Edge Strip */}
-        <mesh position={[0, 0.21, -1.4]}>
+        {/* Step Gold Edge Strip */}
+        <mesh position={[0, 0.25, -0.3]}>
           <boxGeometry args={[11.5, 0.03, 0.04]} />
           <meshStandardMaterial color="#d97706" metalness={0.8} roughness={0.2} />
         </mesh>
-        {/* Low Step Lights along Riser Edge */}
+        {/* Step Lights */}
         {[-3.0, -1.5, 1.5, 3.0].map((x, i) => (
-          <mesh key={i} position={[x, 0.1, -1.42]}>
+          <mesh key={i} position={[x, 0.12, -0.32]}>
+            <boxGeometry args={[0.15, 0.04, 0.02]} />
+            <meshBasicMaterial color="#38bdf8" />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Main Elevated Riser Platform for Row 2 (h = 1.05m, top at Y = 1.05m) */}
+      <group position={[0, 0.525, 2.7]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[11.5, 1.05, 3.2]} />
+          <meshStandardMaterial color="#450a0a" roughness={0.85} />
+        </mesh>
+        {/* Gold Upper Riser Edge Strip */}
+        <mesh position={[0, 0.52, -1.6]}>
+          <boxGeometry args={[11.5, 0.03, 0.04]} />
+          <meshStandardMaterial color="#d97706" metalness={0.8} roughness={0.2} />
+        </mesh>
+        {/* Upper Step Lights along Riser Edge */}
+        {[-3.0, -1.5, 1.5, 3.0].map((x, i) => (
+          <mesh key={i} position={[x, 0.35, -1.62]}>
             <boxGeometry args={[0.15, 0.04, 0.02]} />
             <meshBasicMaterial color="#38bdf8" />
           </mesh>

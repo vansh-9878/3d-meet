@@ -148,14 +148,22 @@ io.on('connection', (socket) => {
 
     if (!rooms.has(activeRoomId)) {
       rooms.set(activeRoomId, new Map());
+    }
+    const room = rooms.get(activeRoomId);
+
+    // If the room is empty, adopt the joining user's chosen mapType
+    if (room.size === 0 && mapType) {
+      roomMapTypes.set(activeRoomId, mapType);
+    } else if (!roomMapTypes.has(activeRoomId)) {
       roomMapTypes.set(activeRoomId, mapType || 'office');
     }
+
     if (!roomTheatreLighting.has(activeRoomId)) {
       roomTheatreLighting.set(activeRoomId, { lightsOn: true });
     }
     if (!roomTheatrePlayback.has(activeRoomId)) {
       roomTheatrePlayback.set(activeRoomId, {
-        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        videoUrl: '',
         isPlaying: false,
         currentTime: 0,
         lastUpdated: Date.now(),
@@ -163,8 +171,6 @@ io.on('connection', (socket) => {
         updatedBy: ''
       });
     }
-
-    const room = rooms.get(activeRoomId);
 
     // Initial user character defaults
     const userData = {
@@ -583,8 +589,8 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Disconnect & Room cleanup
-  socket.on('disconnect', () => {
+  // Common room cleanup handler when user exits or disconnects
+  const handleUserLeave = () => {
     const roomId = socket.data.roomId;
     if (roomId && rooms.has(roomId)) {
       const room = rooms.get(roomId);
@@ -607,6 +613,9 @@ io.on('connection', (socket) => {
       }
 
       room.delete(socket.id);
+      socket.leave(roomId);
+      socket.data.roomId = null;
+
       if (room.size === 0) {
         rooms.delete(roomId);
         roomMapTypes.delete(roomId);
@@ -620,6 +629,16 @@ io.on('connection', (socket) => {
       }
       console.log(`[Leave] User "${user?.name || socket.id}" left room "${roomId}" (Remaining: ${room.size})`);
     }
+  };
+
+  // Leave room event
+  socket.on('leave-room', () => {
+    handleUserLeave();
+  });
+
+  // Disconnect & Room cleanup
+  socket.on('disconnect', () => {
+    handleUserLeave();
     console.log(`[Socket Disconnected] ID: ${socket.id}`);
   });
 });

@@ -222,10 +222,14 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
     let floorHeight = 0;
 
     if (mapType === 'theatre') {
-      // Back row tier riser platform (Z between 1.1 and 3.9) or front stage (Z < -8.2)
-      if (playerPos.current.z > 1.1 && playerPos.current.z < 3.9 && Math.abs(playerPos.current.x) > 0.8) {
-        floorHeight = 0.44;
+      // Elevated stadium riser platform (Z between 1.1 and 4.3)
+      if (playerPos.current.z >= 1.1 && playerPos.current.z < 4.3 && Math.abs(playerPos.current.x) > 0.8) {
+        floorHeight = 1.05;
+      } else if (playerPos.current.z >= 0.5 && playerPos.current.z < 1.1 && Math.abs(playerPos.current.x) > 0.8) {
+        // Intermediate access step
+        floorHeight = 0.52;
       } else if (playerPos.current.z < -8.2) {
+        // Front stage platform
         floorHeight = 0.44;
       }
     } else {
