@@ -168,8 +168,10 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
     // 1. Presentation TV / Cinema Screen Close-Up Mode:
     if (viewMode === 'presentation') {
       if (mapType === 'theatre') {
-        // In Theatre: Cinema Screen center is at [0, 3.4, -10.2]. Place camera at [0, 2.3, -1.0] looking straight at [0, 3.4, -10.2]
-        const cinemaCamPos = new THREE.Vector3(0, 2.3, -1.0);
+        // In Theatre: Cinema Screen center is at [0, 3.4, -10.2] (width: 11.2, height: 6.3).
+        // Place camera at [0, 3.4, -5.2] so all chairs (Z >= -2.5) are completely behind the camera
+        // and the screen zooms in to dominate the entire viewport cleanly.
+        const cinemaCamPos = new THREE.Vector3(0, 3.4, -5.2);
         camera.position.lerp(cinemaCamPos, 0.08);
         camera.lookAt(new THREE.Vector3(0, 3.4, -10.2));
       } else {

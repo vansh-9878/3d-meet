@@ -22,15 +22,13 @@ import {
   Smile,
   PenTool,
   Lightbulb,
-  Film,
-  Building2
+  Film
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function MeetingHUD({
   roomId = 'main-office',
   mapType = 'office',
-  onSwitchMap = () => {},
   participantCount = 1,
   userName = '',
   currentSocketId = null,
@@ -186,25 +184,6 @@ export function MeetingHUD({
               }`}>
                 {mapType === 'theatre' ? '🎬 Cinema' : '🏢 Boardroom'}
               </span>
-
-              {/* Map Switcher Button */}
-              <button
-                onClick={onSwitchMap}
-                className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 transition-all active:scale-95"
-                title={mapType === 'theatre' ? 'Switch to Executive Boardroom' : 'Switch to Movie Theatre'}
-              >
-                {mapType === 'theatre' ? (
-                  <>
-                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Go to Boardroom</span>
-                  </>
-                ) : (
-                  <>
-                    <Film className="w-3.5 h-3.5 text-red-600" />
-                    <span>Go to Cinema</span>
-                  </>
-                )}
-              </button>
 
               <button
                 onClick={handleCopyInvite}
@@ -568,12 +547,11 @@ export function MeetingHUD({
             {/* Tomato */}
             <button
               onClick={() => onThrowProjectile('tomato')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg transition-all active:scale-90 shadow-sm"
               title="Throw Tomato (Key 1)"
             >
               <span className="text-base">🍅</span>
-              <span className="text-[11px] font-extrabold text-red-700 hidden sm:inline">Tomato</span>
-              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
+              <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
                 1
               </span>
             </button>
@@ -581,12 +559,11 @@ export function MeetingHUD({
             {/* Egg */}
             <button
               onClick={() => onThrowProjectile('egg')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg transition-all active:scale-90 shadow-sm"
               title="Throw Egg (Key 2)"
             >
               <span className="text-base">🥚</span>
-              <span className="text-[11px] font-extrabold text-yellow-800 hidden sm:inline">Egg</span>
-              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200">
+              <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200">
                 2
               </span>
             </button>
@@ -594,12 +571,11 @@ export function MeetingHUD({
             {/* Water Balloon */}
             <button
               onClick={() => onThrowProjectile('water_balloon')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-sky-50 text-sky-600 border border-sky-200 rounded-lg transition-all active:scale-90 shadow-sm"
+              className="flex items-center gap-1 px-2 py-1.5 bg-white hover:bg-sky-50 text-sky-600 border border-sky-200 rounded-lg transition-all active:scale-90 shadow-sm"
               title="Throw Balloon (Key 3)"
             >
               <span className="text-base">💧</span>
-              <span className="text-[11px] font-extrabold text-sky-700 hidden sm:inline">Balloon</span>
-              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">
+              <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">
                 3
               </span>
             </button>

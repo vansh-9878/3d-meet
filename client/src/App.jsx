@@ -1039,7 +1039,6 @@ export default function App() {
       <MeetingHUD
         roomId={roomId}
         mapType={mapType}
-        onSwitchMap={handleSwitchMap}
         participantCount={Object.keys(remotePlayers).length + 1}
         userName={userName}
         currentSocketId={socket?.id}
