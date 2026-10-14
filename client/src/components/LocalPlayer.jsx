@@ -169,11 +169,11 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
     if (viewMode === 'presentation') {
       if (mapType === 'theatre') {
         // In Theatre: Cinema Screen center is at [0, 3.4, -10.2] (width: 11.2, height: 6.3).
-        // Place camera at [0, 3.4, -5.2] so all chairs (Z >= -2.5) are completely behind the camera
-        // and the screen zooms in to dominate the entire viewport cleanly.
-        const cinemaCamPos = new THREE.Vector3(0, 3.4, -5.2);
+        // Place camera at [0, 3.35, -3.7] so the entire screen is fully visible
+        // with a comfortable margin outside the screen, and all chairs (Z >= -2.5) are behind the camera.
+        const cinemaCamPos = new THREE.Vector3(0, 3.35, -3.7);
         camera.position.lerp(cinemaCamPos, 0.08);
-        camera.lookAt(new THREE.Vector3(0, 3.4, -10.2));
+        camera.lookAt(new THREE.Vector3(0, 3.35, -10.2));
       } else {
         // In Office: TV center is at [0, 4.2, -11.6]. Place camera at [0, 4.2, -6.8] looking straight at [0, 4.2, -11.6]
         const tvCamPos = new THREE.Vector3(0, 4.2, -6.8);

@@ -28,15 +28,18 @@ const SOCKET_SERVER_URL =
 
 export default function App() {
   // Read Room ID & Map Type from URL query parameters
-  const [roomId, setRoomId] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('room') || 'main-office';
-  });
-
   const [mapType, setMapType] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const map = params.get('map');
     return map === 'theatre' ? 'theatre' : 'office';
+  });
+
+  const [roomId, setRoomId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get('room');
+    if (room && room.trim()) return room.trim();
+    const map = params.get('map');
+    return map === 'theatre' ? 'main-theatre' : 'main-office';
   });
 
   const [userName, setUserName] = useState(() => `Participant ${Math.floor(100 + Math.random() * 900)}`);
@@ -356,6 +359,22 @@ export default function App() {
       s.disconnect();
     };
   }, []);
+
+  // Ensure socket cleanly leaves room and disconnects when tab is refreshed or closed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (socket) {
+        socket.emit('leave-room');
+        socket.disconnect();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
+  }, [socket]);
 
   // Initialize background HTML5 <video> element for Theatre VideoTexture & audio
   useEffect(() => {
@@ -697,6 +716,12 @@ export default function App() {
   // Select map in lobby and update URL query param
   const handleSelectLobbyMap = (chosenMap) => {
     setMapType(chosenMap);
+    setRoomId((prevRoom) => {
+      if (!prevRoom || prevRoom === 'main-office' || prevRoom === 'main-theatre') {
+        return chosenMap === 'theatre' ? 'main-theatre' : 'main-office';
+      }
+      return prevRoom;
+    });
     const params = new URLSearchParams(window.location.search);
     params.set('map', chosenMap);
     const newUrl = `${window.location.pathname}?${params.toString()}`;

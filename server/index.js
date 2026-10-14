@@ -118,7 +118,9 @@ const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
-  }
+  },
+  pingTimeout: 5000,
+  pingInterval: 10000
 });
 
 // In-memory room state: roomId -> Map(socketId => participantData)
@@ -142,6 +144,11 @@ io.on('connection', (socket) => {
 
   // Join a specific room with unique roomId
   socket.on('join-room', async ({ roomId, mapType = 'office', user }) => {
+    // If socket was already registered in a room, cleanly leave it first
+    if (socket.data.roomId) {
+      handleUserLeave();
+    }
+
     // Sanitize room ID
     const activeRoomId = (roomId && roomId.trim()) ? roomId.trim().toLowerCase() : 'main-office';
     socket.join(activeRoomId);
@@ -150,6 +157,14 @@ io.on('connection', (socket) => {
       rooms.set(activeRoomId, new Map());
     }
     const room = rooms.get(activeRoomId);
+
+    // Purge any stale duplicate entry with the same socket ID or user name
+    for (const [existingSocketId, existingUser] of room.entries()) {
+      if (existingSocketId === socket.id || (user?.name && existingUser.name === user.name)) {
+        room.delete(existingSocketId);
+        io.in(activeRoomId).emit('user-left', existingSocketId);
+      }
+    }
 
     // If the room is empty, adopt the joining user's chosen mapType
     if (room.size === 0 && mapType) {
