@@ -247,6 +247,15 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
       isGrounded.current = false;
     }
 
+    // Smooth step-up climbing for stairs / risers
+    if (floorHeight > playerPos.current.y && isGrounded.current) {
+      const stepDiff = floorHeight - playerPos.current.y;
+      if (stepDiff <= 0.65) {
+        playerPos.current.y = floorHeight;
+        velocityY.current = 0;
+      }
+    }
+
     // Apply gravity
     if (!isGrounded.current || playerPos.current.y > floorHeight) {
       velocityY.current -= gravity * delta;
@@ -297,8 +306,14 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
         Math.sin(playerRot.current) * strafeStep;
 
       const checkBlocked = collisionFn || (mapType === 'theatre' ? isTheatrePositionBlocked : isPositionBlocked);
+      
+      // Wall sliding collision: try combined, then slide along X, then slide along Z
       if (!checkBlocked(targetX, targetZ, playerPos.current.y)) {
         playerPos.current.x = targetX;
+        playerPos.current.z = targetZ;
+      } else if (!checkBlocked(targetX, playerPos.current.z, playerPos.current.y)) {
+        playerPos.current.x = targetX;
+      } else if (!checkBlocked(playerPos.current.x, targetZ, playerPos.current.y)) {
         playerPos.current.z = targetZ;
       }
       currentAnimState.current = isGrounded.current ? 'walking' : 'jumping';

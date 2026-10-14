@@ -162,8 +162,8 @@ export function WhiteboardModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 select-none">
-      <div className="relative w-full max-w-6xl bg-white border border-gray-300 rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[92vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950 p-4 select-none">
+      <div className="relative w-full max-w-6xl bg-white border-2 border-gray-300 rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[92vh]">
         {/* Header Bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-3">

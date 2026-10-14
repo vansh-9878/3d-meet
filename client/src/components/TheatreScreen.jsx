@@ -26,6 +26,40 @@ export function TheatreScreen({
   const [hasVideoError, setHasVideoError] = useState(false);
   const meshRef = useRef(null);
   const screenVideoRef = useRef(null);
+  const screenAudioRef = useRef(null);
+
+  // Play incoming screen share audio tracks for viewers
+  useEffect(() => {
+    if (!screenStream) {
+      if (screenAudioRef.current) {
+        screenAudioRef.current.srcObject = null;
+      }
+      return;
+    }
+
+    const audioTracks = screenStream.getAudioTracks();
+    if (audioTracks.length > 0) {
+      let audio = screenAudioRef.current;
+      if (!audio) {
+        audio = new Audio();
+        audio.autoplay = true;
+        screenAudioRef.current = audio;
+      }
+      audio.srcObject = new MediaStream(audioTracks);
+      audio.volume = 1.0;
+      audio.play().catch((e) => console.warn('[TheatreScreen] Screen audio playback blocked:', e));
+    } else {
+      if (screenAudioRef.current) {
+        screenAudioRef.current.srcObject = null;
+      }
+    }
+
+    return () => {
+      if (screenAudioRef.current) {
+        screenAudioRef.current.srcObject = null;
+      }
+    };
+  }, [screenStream]);
 
   // 1. Handle live screen sharing stream (WebRTC)
   useEffect(() => {

@@ -479,7 +479,14 @@ export function useWebRTC(socket, roomId, userName) {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: { cursor: 'always', frameRate: { ideal: 30 } },
-          audio: true
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 2
+          },
+          systemAudio: 'include',
+          selfBrowserSurface: 'include'
         });
 
         screenStreamRef.current = stream;
@@ -642,13 +649,21 @@ export function useWebRTC(socket, roomId, userName) {
           const screenPC = new RTCPeerConnection(iceConfigRef.current);
           screenPeerConnections.current[caller] = screenPC;
 
+          let incomingScreenStream = null;
           screenPC.ontrack = (event) => {
-            console.log(`[WebRTC Screen] ontrack received from presenter ${caller}`);
-            const incoming = event.streams[0] || new MediaStream([event.track]);
+            console.log(`[WebRTC Screen] ontrack (${event.track.kind}) received from presenter ${caller}`);
+            if (event.streams && event.streams[0]) {
+              incomingScreenStream = event.streams[0];
+            } else {
+              if (!incomingScreenStream) incomingScreenStream = new MediaStream();
+              if (!incomingScreenStream.getTracks().some(t => t.id === event.track.id)) {
+                incomingScreenStream.addTrack(event.track);
+              }
+            }
             setScreenPresenter(prev => ({
               presenterId: caller,
               presenterName: prev?.presenterName || 'Presenter',
-              stream: incoming
+              stream: incomingScreenStream
             }));
           };
 

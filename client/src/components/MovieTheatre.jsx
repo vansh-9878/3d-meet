@@ -31,28 +31,11 @@ export const THEATRE_SEAT_POSITIONS = [
  * - Seat rows: block walking directly through seat bases, leaving wide center aisle (|X| < 1.0)
  */
 export function isTheatrePositionBlocked(x, z, y) {
-  // Room boundary walls
-  if (x < -7.4 || x > 7.4 || z < -8.8 || z > 9.8) return true;
+  // Room boundary perimeter walls
+  if (x < -7.4 || x > 7.4 || z < -9.6 || z > 9.8) return true;
 
-  // Front Stage platform (h ~ 0.44m)
-  if (z < -8.2 && y < 0.42) {
-    return true;
-  }
-
-  // Row 1 Seats (Z between -3.0 and -2.0)
-  if (z > -3.0 && z < -2.0 && Math.abs(x) > 0.9) {
-    if (y < 0.55) return true;
-  }
-
-  // Row 2 Elevated Riser Platform (Z between 1.1 and 4.3)
-  if (z >= 1.1 && z < 4.3 && Math.abs(x) > 0.9) {
-    if (y < 1.0) return true;
-  }
-
-  // Row 2 Seats (Z between 2.1 and 3.4)
-  if (z > 2.1 && z < 3.4 && Math.abs(x) > 0.9) {
-    if (y < 1.55) return true;
-  }
+  // Front Proscenium Tower Speakers
+  if (Math.abs(x) > 5.8 && z < -8.8) return true;
 
   return false;
 }

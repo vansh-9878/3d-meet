@@ -9,7 +9,41 @@ import * as THREE from 'three';
  */
 export function PresentationScreen({ screenStream, presenterName }) {
   const videoRef = useRef(null);
+  const audioRef = useRef(null);
   const [videoTexture, setVideoTexture] = useState(null);
+
+  // Play incoming screen share audio tracks for viewers
+  useEffect(() => {
+    if (!screenStream) {
+      if (audioRef.current) {
+        audioRef.current.srcObject = null;
+      }
+      return;
+    }
+
+    const audioTracks = screenStream.getAudioTracks();
+    if (audioTracks.length > 0) {
+      let audio = audioRef.current;
+      if (!audio) {
+        audio = new Audio();
+        audio.autoplay = true;
+        audioRef.current = audio;
+      }
+      audio.srcObject = new MediaStream(audioTracks);
+      audio.volume = 1.0;
+      audio.play().catch(e => console.warn('[PresentationScreen] Screen audio playback blocked:', e));
+    } else {
+      if (audioRef.current) {
+        audioRef.current.srcObject = null;
+      }
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.srcObject = null;
+      }
+    };
+  }, [screenStream]);
 
   useEffect(() => {
     let video = videoRef.current;

@@ -530,26 +530,6 @@ export default function App() {
     setPuddles((prev) => prev.filter((p) => p.id !== puddleId));
   };
 
-  // Teleport to executive speaker podium when starting screen sharing
-  const prevScreenSharingRef = useRef(false);
-  useEffect(() => {
-    if (isScreenSharing && !prevScreenSharingRef.current) {
-      if (currentSeat) {
-        handleStandUp();
-      }
-      const podiumPos = [5.0, 0, -10.2];
-      const podiumRot = Math.PI - 0.22;
-      localPlayerRef.current?.teleport(podiumPos, podiumRot);
-      if (socket) {
-        socket.emit('player-move', {
-          position: podiumPos,
-          rotation: podiumRot,
-          state: 'idle'
-        });
-      }
-    }
-    prevScreenSharingRef.current = isScreenSharing;
-  }, [isScreenSharing, currentSeat, socket]);
 
   // Hotkeys 1, 2, 3: Shoot Tomato, Egg, or Water Balloon
   useEffect(() => {
@@ -726,18 +706,14 @@ export default function App() {
   // Join Lobby Screen
   if (!hasEntered) {
     return (
-      <div className="relative w-screen h-screen bg-slate-950 flex items-center justify-center font-sans overflow-hidden">
-        {/* Subtle Ambient Color Spheres */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 w-full max-w-lg bg-slate-900 border-2 border-slate-700 rounded-3xl p-7 shadow-2xl text-white">
-          <div className="text-center mb-5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-950 border border-blue-800 text-blue-300 text-xs font-bold uppercase tracking-wider mb-2.5">
-              Phase 2 • Real-Time 3D Virtual Workspace
+      <div className="relative w-screen h-screen bg-slate-900 flex items-center justify-center font-sans overflow-hidden">
+        <div className="relative z-10 w-full max-w-lg bg-white border-2 border-gray-300 rounded-3xl p-8 shadow-2xl">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold uppercase tracking-wider mb-3">
+              Phase 2 • Real-Time Multiplayer Office
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tight">Virtual 3D Conference</h1>
-            <p className="text-xs text-slate-400 font-medium mt-1">
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Virtual 3D Conference</h1>
+            <p className="text-xs text-gray-600 font-medium mt-1">
               Join with teammates on the same Wi-Fi, hotspot, or local network.
             </p>
           </div>
@@ -746,13 +722,13 @@ export default function App() {
             {/* Room ID Input & Generator */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
                   Room Name or Unique ID
                 </label>
                 <button
                   type="button"
                   onClick={handleGenerateRandomRoom}
-                  className="text-[11px] font-bold text-blue-400 hover:text-blue-300 underline"
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
                 >
                   Generate Random
                 </button>
@@ -763,33 +739,36 @@ export default function App() {
                   value={roomId}
                   onChange={(e) => setRoomId(e.target.value)}
                   required
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
-                  placeholder="e.g. design-sprint, movie-night"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-sm font-semibold"
+                  placeholder="e.g. design-sprint, team-standup"
                 />
                 <button
                   type="button"
                   onClick={handleCopyLobbyInvite}
-                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all"
+                  className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-xl text-gray-700 text-xs font-bold flex items-center gap-1.5 transition-all"
                   title="Copy shareable room invite link"
                 >
                   {copiedLobbyLink ? (
                     <>
-                      <Check className="w-4 h-4 text-emerald-400" />
-                      <span className="text-emerald-400 font-bold">Copied!</span>
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span className="text-emerald-700 font-bold">Copied!</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-4 h-4 text-slate-400" />
+                      <Copy className="w-4 h-4 text-gray-600" />
                       <span>Copy Link</span>
                     </>
                   )}
                 </button>
               </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Anyone opening this link or joining this Room ID will enter the same 3D room with you.
+              </p>
             </div>
 
             {/* Display Name Input */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
                 Your Display Name
               </label>
               <input
@@ -797,14 +776,14 @@ export default function App() {
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-sm font-semibold"
                 placeholder="e.g. Sarah Jenkins"
               />
             </div>
 
             {/* Outfit Preset Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
                 Select Outfit Preset
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -815,12 +794,12 @@ export default function App() {
                     onClick={() => setAvatarConfig(preset)}
                     className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs font-semibold transition-all ${
                       avatarConfig.suitColor === preset.suitColor
-                        ? 'bg-blue-950 border-2 border-blue-500 text-blue-200 shadow-sm'
-                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                        ? 'bg-blue-50 border-2 border-blue-600 text-blue-900 shadow-sm'
+                        : 'bg-gray-50 border-gray-300 text-gray-800 hover:bg-gray-100'
                     }`}
                   >
                     <div
-                      className="w-4 h-4 rounded-full border border-slate-600 shrink-0"
+                      className="w-4 h-4 rounded-full border border-gray-300 shrink-0"
                       style={{ backgroundColor: preset.suitColor }}
                     />
                     <span className="truncate">{preset.name}</span>
@@ -831,7 +810,7 @@ export default function App() {
 
             {/* 3D Environment Map Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
                 Select 3D Environment
               </label>
               <div className="grid grid-cols-2 gap-2.5">
@@ -841,15 +820,15 @@ export default function App() {
                   onClick={() => handleSelectLobbyMap('office')}
                   className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
                     mapType === 'office'
-                      ? 'bg-blue-950/80 border-2 border-blue-500 shadow-md ring-2 ring-blue-500/20'
-                      : 'bg-slate-950 border-slate-800 hover:bg-slate-800 opacity-70'
+                      ? 'bg-blue-50 border-2 border-blue-600 shadow-md ring-2 ring-blue-500/20'
+                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <Building2 className={`w-4 h-4 ${mapType === 'office' ? 'text-blue-400' : 'text-slate-400'}`} />
-                    <span className="font-extrabold text-xs text-white">Executive Boardroom</span>
+                    <Building2 className={`w-4 h-4 ${mapType === 'office' ? 'text-blue-600' : 'text-gray-500'}`} />
+                    <span className="font-extrabold text-xs text-gray-900">Executive Boardroom</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-tight">
+                  <p className="text-[11px] text-gray-600 leading-tight">
                     Meeting table, 8 swivel chairs, presentation TV & interactive whiteboard.
                   </p>
                 </button>
@@ -860,15 +839,15 @@ export default function App() {
                   onClick={() => handleSelectLobbyMap('theatre')}
                   className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
                     mapType === 'theatre'
-                      ? 'bg-red-950/80 border-2 border-red-500 shadow-md ring-2 ring-red-500/20'
-                      : 'bg-slate-950 border-slate-800 hover:bg-slate-800 opacity-70'
+                      ? 'bg-red-50 border-2 border-red-600 shadow-md ring-2 ring-red-500/20'
+                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <Film className={`w-4 h-4 ${mapType === 'theatre' ? 'text-red-400' : 'text-slate-400'}`} />
-                    <span className="font-extrabold text-xs text-white">Movie Theatre</span>
+                    <Film className={`w-4 h-4 ${mapType === 'theatre' ? 'text-red-600' : 'text-gray-500'}`} />
+                    <span className="font-extrabold text-xs text-gray-900">Movie Theatre</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-tight">
+                  <p className="text-[11px] text-gray-600 leading-tight">
                     Private cinema with elevated tiered velvet seats, cinema screen & media player.
                   </p>
                 </button>
@@ -877,17 +856,17 @@ export default function App() {
 
             <button
               type="submit"
-              className={`w-full py-3.5 px-4 rounded-xl text-white font-black text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
+              className={`w-full py-3.5 px-4 rounded-xl text-white font-extrabold text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
                 mapType === 'theatre'
-                  ? 'bg-red-600 hover:bg-red-500 shadow-red-600/30'
-                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                  ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
               }`}
             >
               {mapType === 'theatre' ? 'Enter Movie Theatre' : 'Enter Executive Boardroom'}
             </button>
           </form>
 
-          <div className="mt-4 pt-3.5 border-t border-slate-800 text-center text-xs font-medium text-slate-500">
+          <div className="mt-5 pt-4 border-t border-gray-200 text-center text-xs font-medium text-gray-500">
             Share your invite link with others on your hotspot/Wi-Fi to join together!
           </div>
         </div>

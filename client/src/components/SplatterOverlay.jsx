@@ -35,7 +35,7 @@ export function SplatterOverlay({ splatterData }) {
     <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden select-none transition-opacity duration-700 animate-fadeIn">
       {/* 1. Tomato Splatter (Red) */}
       {isTomato && (
-        <div className="absolute inset-0 bg-red-600/35 backdrop-blur-[1px]">
+        <div className="absolute inset-0 bg-red-600/30">
           {/* Main Splat Center */}
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-red-700/60 blur-xl animate-pulse" />
           
@@ -59,7 +59,7 @@ export function SplatterOverlay({ splatterData }) {
           </svg>
 
           {/* Hit Notification Badge */}
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-red-700/90 text-white rounded-2xl shadow-2xl border-2 border-red-400 font-extrabold text-sm flex items-center gap-2 animate-bounce">
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-red-700 text-white rounded-2xl shadow-2xl border-2 border-red-400 font-extrabold text-sm flex items-center gap-2 animate-bounce">
             <span className="text-xl">🍅</span>
             <span>You got splattered with a Tomato!</span>
             {data.throwerName && <span className="text-xs text-red-200">({data.throwerName})</span>}
@@ -69,7 +69,7 @@ export function SplatterOverlay({ splatterData }) {
 
       {/* 2. Egg Splatter (Light Grey / Creamy Egg White with Yolk) */}
       {isEgg && (
-        <div className="absolute inset-0 bg-slate-200/45 backdrop-blur-[2px]">
+        <div className="absolute inset-0 bg-slate-200/40">
           {/* Egg White Center Blotch */}
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-80 rounded-full bg-slate-100/70 blur-2xl" />
 
@@ -91,7 +91,7 @@ export function SplatterOverlay({ splatterData }) {
           </svg>
 
           {/* Hit Notification Badge */}
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-slate-800/90 text-white rounded-2xl shadow-2xl border-2 border-amber-400 font-extrabold text-sm flex items-center gap-2 animate-bounce">
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-slate-800 text-white rounded-2xl shadow-2xl border-2 border-amber-400 font-extrabold text-sm flex items-center gap-2 animate-bounce">
             <span className="text-xl">🥚</span>
             <span>You got egged!</span>
             {data.throwerName && <span className="text-xs text-amber-300">({data.throwerName})</span>}
@@ -101,7 +101,7 @@ export function SplatterOverlay({ splatterData }) {
 
       {/* 3. Water Balloon Splash (Translucent Blue) */}
       {isWaterBalloon && (
-        <div className="absolute inset-0 bg-sky-500/35 backdrop-blur-[1px]">
+        <div className="absolute inset-0 bg-sky-500/30">
           {/* Water Splash Ring */}
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-blue-400/50 blur-xl animate-pulse" />
 
