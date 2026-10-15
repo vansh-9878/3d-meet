@@ -13,7 +13,12 @@ export function InteractiveWhiteboard({
   whiteboardUser = null,
   currentSocketId = null,
   onOpenWhiteboard = () => {},
-  isCursorFree = false
+  isCursorFree = false,
+  position = [-11.75, 3.6, 0],
+  rotation = [0, Math.PI / 2, 0],
+  scale = [1, 1, 1],
+  width = 7.6,
+  height = 3.6
 }) {
   const canvasRef = useRef(null);
   const textureRef = useRef(null);
@@ -119,11 +124,14 @@ export function InteractiveWhiteboard({
   const isBeingUsedBySomeoneElse = whiteboardUser && whiteboardUser.userId !== currentSocketId;
   const isBeingUsedByMe = whiteboardUser && whiteboardUser.userId === currentSocketId;
 
+  const frameW = width + 0.2;
+  const frameH = height + 0.2;
+
   return (
-    <group position={[-11.75, 3.6, 0]} rotation={[0, Math.PI / 2, 0]}>
+    <group position={position} rotation={rotation} scale={scale}>
       {/* Heavy Aluminium Bezel Frame */}
       <mesh castShadow>
-        <boxGeometry args={[7.8, 3.8, 0.08]} />
+        <boxGeometry args={[frameW, frameH, 0.08]} />
         <meshStandardMaterial color="#64748b" metalness={0.8} roughness={0.3} />
       </mesh>
 
@@ -135,7 +143,7 @@ export function InteractiveWhiteboard({
           onOpenWhiteboard();
         }}
       >
-        <planeGeometry args={[7.6, 3.6]} />
+        <planeGeometry args={[width, height]} />
         {textureReady && textureRef.current ? (
           <meshBasicMaterial map={textureRef.current} />
         ) : (
@@ -144,8 +152,8 @@ export function InteractiveWhiteboard({
       </mesh>
 
       {/* Bottom Aluminum Pen & Eraser Tray */}
-      <mesh position={[0, -1.95, 0.15]}>
-        <boxGeometry args={[5.0, 0.08, 0.25]} />
+      <mesh position={[0, -height / 2 - 0.15, 0.15]}>
+        <boxGeometry args={[Math.min(5.0, width * 0.7), 0.08, 0.25]} />
         <meshStandardMaterial color="#475569" metalness={0.8} />
       </mesh>
 

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { CharacterAvatar } from './CharacterAvatar';
 import { isTheatrePositionBlocked } from './MovieTheatre';
+import { isHostelPositionBlocked } from './HostelRoom';
 
 /**
  * Bounds checking and collision obstacles:
@@ -174,6 +175,12 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
         const cinemaCamPos = new THREE.Vector3(0, 3.35, -3.7);
         camera.position.lerp(cinemaCamPos, 0.08);
         camera.lookAt(new THREE.Vector3(0, 3.35, -10.2));
+      } else if (mapType === 'hostel') {
+        // In Hostel Room: TV is mounted on Right Wall at [3.7, 1.95, -2.1] facing -X.
+        // Place camera at [1.3, 1.95, -2.1] looking straight at [3.7, 1.95, -2.1]
+        const hostelTvCamPos = new THREE.Vector3(1.3, 1.95, -2.1);
+        camera.position.lerp(hostelTvCamPos, 0.08);
+        camera.lookAt(new THREE.Vector3(3.7, 1.95, -2.1));
       } else {
         // In Office: TV center is at [0, 4.2, -11.6]. Place camera at [0, 4.2, -6.8] looking straight at [0, 4.2, -11.6]
         const tvCamPos = new THREE.Vector3(0, 4.2, -6.8);
@@ -307,7 +314,13 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
         Math.cos(playerRot.current) * forwardStep +
         Math.sin(playerRot.current) * strafeStep;
 
-      const checkBlocked = collisionFn || (mapType === 'theatre' ? isTheatrePositionBlocked : isPositionBlocked);
+      const checkBlocked =
+        collisionFn ||
+        (mapType === 'theatre'
+          ? isTheatrePositionBlocked
+          : mapType === 'hostel'
+          ? isHostelPositionBlocked
+          : isPositionBlocked);
       
       // Wall sliding collision: try combined, then slide along X, then slide along Z
       if (!checkBlocked(targetX, targetZ, playerPos.current.y)) {

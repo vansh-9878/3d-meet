@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { ContactShadows } from '@react-three/drei';
 import { io } from 'socket.io-client';
-import { Copy, Check, Users, Sparkles, Film, Building2, Clapperboard } from 'lucide-react';
+import { Copy, Check, Users, Sparkles, Film, Building2, Clapperboard, Bed } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ConferenceRoom, SEAT_POSITIONS } from './components/ConferenceRoom';
 import { MovieTheatre, THEATRE_SEAT_POSITIONS } from './components/MovieTheatre';
+import { HostelRoom, HOSTEL_SEAT_POSITIONS } from './components/HostelRoom';
 import { LocalPlayer } from './components/LocalPlayer';
 import { RemotePlayer } from './components/RemotePlayer';
 import { AvatarCustomizer, AVATAR_PRESETS } from './components/AvatarCustomizer';
@@ -31,7 +32,7 @@ export default function App() {
   const [mapType, setMapType] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const map = params.get('map');
-    return map === 'theatre' ? 'theatre' : 'office';
+    return map === 'theatre' ? 'theatre' : map === 'hostel' ? 'hostel' : 'office';
   });
 
   const [roomId, setRoomId] = useState(() => {
@@ -39,7 +40,7 @@ export default function App() {
     const room = params.get('room');
     if (room && room.trim()) return room.trim();
     const map = params.get('map');
-    return map === 'theatre' ? 'main-theatre' : 'main-office';
+    return map === 'theatre' ? 'main-theatre' : map === 'hostel' ? 'main-hostel' : 'main-office';
   });
 
   const [userName, setUserName] = useState(() => `Participant ${Math.floor(100 + Math.random() * 900)}`);
@@ -140,7 +141,7 @@ export default function App() {
       console.log(`[Socket Connected] Connected to server at ${SOCKET_SERVER_URL} (ID: ${s.id})`);
       if (hasEnteredRef.current) {
         const activeRoom = (roomIdRef.current && roomIdRef.current.trim()) ? roomIdRef.current.trim().toLowerCase() : 'main-office';
-        const spawn = mapTypeRef.current === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
+        const spawn = mapTypeRef.current === 'theatre' ? [0, 0, 8.2] : mapTypeRef.current === 'hostel' ? [1.5, 0, 2.5] : [0, 0, 5.0];
         s.emit('join-room', {
           roomId: activeRoom,
           mapType: mapTypeRef.current,
@@ -340,7 +341,7 @@ export default function App() {
     s.on('map-changed', ({ mapType: newMapType }) => {
       setMapType(newMapType);
       setCurrentSeat(null);
-      const spawn = newMapType === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
+      const spawn = newMapType === 'theatre' ? [0, 0, 8.2] : newMapType === 'hostel' ? [1.5, 0, 2.5] : [0, 0, 5.0];
       localPlayerRef.current?.teleport(spawn, Math.PI);
     });
 
@@ -444,7 +445,7 @@ export default function App() {
     const newUrl = `${window.location.pathname}?room=${encodeURIComponent(sanitizedRoom)}&map=${encodeURIComponent(mapType)}`;
     window.history.replaceState({ path: newUrl }, '', newUrl);
 
-    const spawn = mapType === 'theatre' ? [0, 0, 8.2] : [0, 0, 5.0];
+    const spawn = mapType === 'theatre' ? [0, 0, 8.2] : mapType === 'hostel' ? [1.5, 0, 2.5] : [0, 0, 5.0];
     socket.emit('join-room', {
       roomId: sanitizedRoom,
       mapType,
@@ -628,7 +629,12 @@ export default function App() {
   };
 
   // Active map seats
-  const currentMapSeats = mapType === 'theatre' ? THEATRE_SEAT_POSITIONS : SEAT_POSITIONS;
+  const currentMapSeats =
+    mapType === 'theatre'
+      ? THEATRE_SEAT_POSITIONS
+      : mapType === 'hostel'
+      ? HOSTEL_SEAT_POSITIONS
+      : SEAT_POSITIONS;
 
   // Toggle theatre lights
   const handleToggleTheatreLights = () => {
@@ -717,8 +723,8 @@ export default function App() {
   const handleSelectLobbyMap = (chosenMap) => {
     setMapType(chosenMap);
     setRoomId((prevRoom) => {
-      if (!prevRoom || prevRoom === 'main-office' || prevRoom === 'main-theatre') {
-        return chosenMap === 'theatre' ? 'main-theatre' : 'main-office';
+      if (!prevRoom || prevRoom === 'main-office' || prevRoom === 'main-theatre' || prevRoom === 'main-hostel') {
+        return chosenMap === 'theatre' ? 'main-theatre' : chosenMap === 'hostel' ? 'main-hostel' : 'main-office';
       }
       return prevRoom;
     });
@@ -838,7 +844,7 @@ export default function App() {
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
                 Select 3D Environment
               </label>
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {/* Executive Boardroom Option */}
                 <button
                   type="button"
@@ -849,12 +855,12 @@ export default function App() {
                       : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
                   }`}
                 >
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-1.5 mb-1">
                     <Building2 className={`w-4 h-4 ${mapType === 'office' ? 'text-blue-600' : 'text-gray-500'}`} />
-                    <span className="font-extrabold text-xs text-gray-900">Executive Boardroom</span>
+                    <span className="font-extrabold text-xs text-gray-900">Boardroom</span>
                   </div>
-                  <p className="text-[11px] text-gray-600 leading-tight">
-                    Meeting table, 8 swivel chairs, presentation TV & interactive whiteboard.
+                  <p className="text-[10px] text-gray-600 leading-tight">
+                    Meeting table, 8 swivel chairs, 85" TV & whiteboard.
                   </p>
                 </button>
 
@@ -868,12 +874,31 @@ export default function App() {
                       : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
                   }`}
                 >
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-1.5 mb-1">
                     <Film className={`w-4 h-4 ${mapType === 'theatre' ? 'text-red-600' : 'text-gray-500'}`} />
                     <span className="font-extrabold text-xs text-gray-900">Movie Theatre</span>
                   </div>
-                  <p className="text-[11px] text-gray-600 leading-tight">
-                    Private cinema with elevated tiered velvet seats, cinema screen & media player.
+                  <p className="text-[10px] text-gray-600 leading-tight">
+                    Tiered cinema velvet seats, massive screen & media player.
+                  </p>
+                </button>
+
+                {/* Hostel Room Option */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectLobbyMap('hostel')}
+                  className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
+                    mapType === 'hostel'
+                      ? 'bg-amber-50 border-2 border-amber-600 shadow-md ring-2 ring-amber-500/20'
+                      : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Bed className={`w-4 h-4 ${mapType === 'hostel' ? 'text-amber-600' : 'text-gray-500'}`} />
+                    <span className="font-extrabold text-xs text-gray-900">Hostel Room</span>
+                  </div>
+                  <p className="text-[10px] text-gray-600 leading-tight">
+                    Bunk beds, study desks, wardrobes, wall shelves, TV & board.
                   </p>
                 </button>
               </div>
@@ -884,10 +909,16 @@ export default function App() {
               className={`w-full py-3.5 px-4 rounded-xl text-white font-extrabold text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
                 mapType === 'theatre'
                   ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+                  : mapType === 'hostel'
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30'
                   : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
               }`}
             >
-              {mapType === 'theatre' ? 'Enter Movie Theatre' : 'Enter Executive Boardroom'}
+              {mapType === 'theatre'
+                ? 'Enter Movie Theatre'
+                : mapType === 'hostel'
+                ? 'Enter Hostel Room'
+                : 'Enter Executive Boardroom'}
             </button>
           </form>
 
@@ -911,7 +942,7 @@ export default function App() {
         camera={{ position: [0, 1.62, 5.0], fov: 60 }}
         className="w-full h-full"
       >
-        <color attach="background" args={[mapType === 'theatre' ? '#07070a' : '#0b1329']} />
+        <color attach="background" args={[mapType === 'theatre' ? '#07070a' : mapType === 'hostel' ? '#0f172a' : '#0b1329']} />
 
         {mapType === 'theatre' ? (
           <MovieTheatre
@@ -931,6 +962,22 @@ export default function App() {
             hoveredSeatId={hoveredSeatId}
             isCursorFree={isCursorFree}
             screenStream={screenStream || screenPresenter?.stream}
+          />
+        ) : mapType === 'hostel' ? (
+          <HostelRoom
+            onSeatSelect={handleSeatSelect}
+            currentSeatId={currentSeat?.id}
+            isCursorFree={isCursorFree}
+            screenStream={screenStream || screenPresenter?.stream}
+            presenterName={screenPresenter?.presenterName}
+            hoveredSeatId={hoveredSeatId}
+            occupiedSeatIds={occupiedSeatIds}
+            whiteboardStrokes={whiteboardStrokes}
+            whiteboardUser={whiteboardUser}
+            currentSocketId={socket?.id}
+            onOpenWhiteboard={handleOpenWhiteboard}
+            lightsOn={theatreLightsOn}
+            onToggleLights={handleToggleTheatreLights}
           />
         ) : (
           <>
@@ -1135,8 +1182,8 @@ export default function App() {
         onChange={handleAvatarChange}
       />
 
-      {/* Collaborative Interactive Whiteboard Studio Modal (Office Map) */}
-      {mapType === 'office' && (
+      {/* Collaborative Interactive Whiteboard Studio Modal (Office & Hostel Maps) */}
+      {(mapType === 'office' || mapType === 'hostel') && (
         <WhiteboardModal
           isOpen={isWhiteboardOpen}
           onClose={handleCloseWhiteboard}

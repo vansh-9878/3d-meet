@@ -583,10 +583,10 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Change Map between 'office' and 'theatre'
+  // Change Map between 'office', 'theatre', and 'hostel'
   socket.on('change-map', ({ mapType }) => {
     const roomId = socket.data.roomId;
-    if (!roomId || !['office', 'theatre'].includes(mapType)) return;
+    if (!roomId || !['office', 'theatre', 'hostel'].includes(mapType)) return;
     roomMapTypes.set(roomId, mapType);
 
     // Reset sitting states when changing maps

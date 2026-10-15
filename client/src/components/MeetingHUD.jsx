@@ -173,16 +173,20 @@ export function MeetingHUD({
           }`} />
           <div>
             <div className="text-sm font-extrabold text-gray-900 tracking-wide flex items-center gap-2 flex-wrap">
-              <span>{mapType === 'theatre' ? 'Movie Theatre' : 'Virtual Office'}</span>
+              <span>
+                {mapType === 'theatre' ? 'Movie Theatre' : mapType === 'hostel' ? 'Hostel Room' : 'Virtual Office'}
+              </span>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
                 Room: {roomId}
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                 mapType === 'theatre'
                   ? 'bg-red-50 text-red-700 border-red-200'
+                  : mapType === 'hostel'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
                   : 'bg-emerald-50 text-emerald-700 border-emerald-200'
               }`}>
-                {mapType === 'theatre' ? '🎬 Cinema' : '🏢 Boardroom'}
+                {mapType === 'theatre' ? '🎬 Cinema' : mapType === 'hostel' ? '🛏️ Hostel' : '🏢 Boardroom'}
               </span>
 
               <button
@@ -479,7 +483,7 @@ export function MeetingHUD({
             </>
           ) : (
             <>
-              {/* Office Presentation TV View */}
+              {/* Presentation TV View (Office & Hostel) */}
               <button
                 onClick={() => onChangeViewMode(viewMode === 'presentation' ? 'fpp' : 'presentation')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
@@ -500,7 +504,7 @@ export function MeetingHUD({
                 </span>
               </button>
 
-              {/* Collaborative Whiteboard */}
+              {/* Collaborative Whiteboard (Office & Hostel) */}
               {(() => {
                 const isAnotherWhiteboardUser = whiteboardUser && whiteboardUser.userId !== currentSocketId;
                 return (
@@ -528,6 +532,22 @@ export function MeetingHUD({
                   </button>
                 );
               })()}
+
+              {/* Hostel Tube Light Switch */}
+              {mapType === 'hostel' && (
+                <button
+                  onClick={onToggleTheatreLights}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                    theatreLightsOn
+                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 shadow-sm'
+                      : 'bg-slate-900 hover:bg-slate-800 text-yellow-300 border-slate-700 shadow-md ring-2 ring-yellow-400/30'
+                  }`}
+                  title="Toggle Tube Lights (Press L)"
+                >
+                  <Lightbulb className={`w-4 h-4 ${theatreLightsOn ? 'text-amber-600' : 'text-yellow-300'}`} />
+                  <span>{theatreLightsOn ? 'Tube Lights: ON' : 'Night Mode'}</span>
+                </button>
+              )}
             </>
           )}
 

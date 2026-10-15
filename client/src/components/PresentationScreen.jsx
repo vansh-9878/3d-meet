@@ -7,7 +7,16 @@ import * as THREE from 'three';
  * When screenStream is active, it creates a dynamic THREE.VideoTexture updated in real-time.
  * When inactive, it displays an executive conference welcome banner.
  */
-export function PresentationScreen({ screenStream, presenterName }) {
+export function PresentationScreen({
+  screenStream,
+  presenterName,
+  position = [0, 4.2, -11.6],
+  rotation = [0, 0, 0],
+  scale = [1, 1, 1],
+  width = 8.5,
+  height = 4.5,
+  includeSpeakerBar = true
+}) {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const [videoTexture, setVideoTexture] = useState(null);
@@ -143,17 +152,20 @@ export function PresentationScreen({ screenStream, presenterName }) {
     }
   });
 
+  const frameWidth = width + 0.3;
+  const frameHeight = height + 0.3;
+
   return (
-    <group position={[0, 4.2, -11.6]}>
+    <group position={position} rotation={rotation} scale={scale}>
       {/* Heavy Bezel Frame */}
       <mesh castShadow>
-        <boxGeometry args={[8.8, 4.8, 0.12]} />
+        <boxGeometry args={[frameWidth, frameHeight, 0.08]} />
         <meshStandardMaterial color="#0f172a" roughness={0.2} metalness={0.8} />
       </mesh>
 
       {/* Screen Display Surface */}
-      <mesh position={[0, 0, 0.065]}>
-        <planeGeometry args={[8.5, 4.5]} />
+      <mesh position={[0, 0, 0.045]}>
+        <planeGeometry args={[width, height]} />
         {videoTexture ? (
           <meshBasicMaterial map={videoTexture} />
         ) : (
@@ -166,11 +178,13 @@ export function PresentationScreen({ screenStream, presenterName }) {
         )}
       </mesh>
 
-      {/* Bottom Conference Speaker Bar */}
-      <mesh position={[0, -2.6, 0.1]}>
-        <boxGeometry args={[5.2, 0.28, 0.2]} />
-        <meshStandardMaterial color="#1e293b" metalness={0.8} />
-      </mesh>
+      {/* Bottom Conference Speaker Bar (optional) */}
+      {includeSpeakerBar && (
+        <mesh position={[0, -height / 2 - 0.25, 0.06]}>
+          <boxGeometry args={[Math.min(5.2, width * 0.7), 0.22, 0.12]} />
+          <meshStandardMaterial color="#1e293b" metalness={0.8} />
+        </mesh>
+      )}
     </group>
   );
 }
