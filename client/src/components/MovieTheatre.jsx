@@ -11,17 +11,17 @@ import { TheatreScreen } from './TheatreScreen';
  * - All seats face -Z toward the Cinema Screen (rotation = Math.PI)
  */
 export const THEATRE_SEAT_POSITIONS = [
-  // Front Row (Floor level, Y = 0.45)
-  { id: 'theatre-seat-1', position: [-3.8, 0.45, -2.5], rotation: Math.PI, label: 'Front Row A1' },
-  { id: 'theatre-seat-2', position: [-1.4, 0.45, -2.5], rotation: Math.PI, label: 'Front Row A2' },
-  { id: 'theatre-seat-3', position: [1.4, 0.45, -2.5], rotation: Math.PI, label: 'Front Row A3' },
-  { id: 'theatre-seat-4', position: [3.8, 0.45, -2.5], rotation: Math.PI, label: 'Front Row A4' },
+  // Front Row (Floor level, Y = 0)
+  { id: 'theatre-seat-1', position: [-3.8, 0, -2.5], rotation: Math.PI, label: 'Front Row A1' },
+  { id: 'theatre-seat-2', position: [-1.4, 0, -2.5], rotation: Math.PI, label: 'Front Row A2' },
+  { id: 'theatre-seat-3', position: [1.4, 0, -2.5], rotation: Math.PI, label: 'Front Row A3' },
+  { id: 'theatre-seat-4', position: [3.8, 0, -2.5], rotation: Math.PI, label: 'Front Row A4' },
 
-  // Back Row (Elevated Stadium Riser Platform, Y = 1.50)
-  { id: 'theatre-seat-5', position: [-3.8, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B1' },
-  { id: 'theatre-seat-6', position: [-1.4, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B2' },
-  { id: 'theatre-seat-7', position: [1.4, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B3' },
-  { id: 'theatre-seat-8', position: [3.8, 1.50, 2.7], rotation: Math.PI, label: 'Elevated Row B4' },
+  // Back Row (Elevated Stadium Riser Platform, Y = 1.05)
+  { id: 'theatre-seat-5', position: [-3.8, 1.05, 2.7], rotation: Math.PI, label: 'Elevated Row B1' },
+  { id: 'theatre-seat-6', position: [-1.4, 1.05, 2.7], rotation: Math.PI, label: 'Elevated Row B2' },
+  { id: 'theatre-seat-7', position: [1.4, 1.05, 2.7], rotation: Math.PI, label: 'Elevated Row B3' },
+  { id: 'theatre-seat-8', position: [3.8, 1.05, 2.7], rotation: Math.PI, label: 'Elevated Row B4' },
 ];
 
 /**
@@ -463,16 +463,22 @@ function TheatreSeat({
 
   useEffect(() => {
     if (groupRef.current) {
-      groupRef.current.userData = {
+      const data = {
         name: `theatre-seat-${seat.id}`,
+        seatId: seat.id,
+        isOccupied: isOccupiedByLocal || isOccupiedByOther,
         onSelect: () => {
           if (!isOccupiedByOther) {
             onSelect && onSelect();
           }
         }
       };
+      groupRef.current.userData = data;
+      groupRef.current.traverse((child) => {
+        child.userData = data;
+      });
     }
-  }, [seat.id, isOccupiedByOther, onSelect]);
+  }, [seat.id, isOccupiedByLocal, isOccupiedByOther, onSelect]);
 
   const isOccupied = isOccupiedByLocal || isOccupiedByOther;
 

@@ -11,17 +11,17 @@ import { InteractiveWhiteboard } from './InteractiveWhiteboard';
  */
 export const HOSTEL_SEAT_POSITIONS = [
   // 1. Study Desk 1 Chair (Left side, towards window)
-  { id: 'hostel-seat-1', position: [-2.2, 0.45, -2.3], rotation: -Math.PI / 2, label: 'Desk 1 Chair' },
+  { id: 'hostel-seat-1', position: [-2.2, 0, -2.3], rotation: -Math.PI / 2, label: 'Desk 1 Chair' },
   // 2. Study Desk 2 Chair (Gaming Setup with open laptop)
-  { id: 'hostel-seat-2', position: [-2.2, 0.45, -0.7], rotation: -Math.PI / 2, label: 'Desk 2 Chair' },
+  { id: 'hostel-seat-2', position: [-2.2, 0, -0.7], rotation: -Math.PI / 2, label: 'Desk 2 Chair' },
   // 3. Study Desk 3 Chair (Towards entrance)
-  { id: 'hostel-seat-3', position: [-2.2, 0.45, 0.8], rotation: -Math.PI / 2, label: 'Desk 3 Chair' },
+  { id: 'hostel-seat-3', position: [-2.2, 0, 0.8], rotation: -Math.PI / 2, label: 'Desk 3 Chair' },
   // 4. Window Desk 4 Chair (Facing desk against front wall)
-  { id: 'hostel-seat-4', position: [-0.7, 0.45, -3.15], rotation: 0, label: 'Desk 4 Chair' },
+  { id: 'hostel-seat-4', position: [-0.7, 0, -3.15], rotation: Math.PI, label: 'Desk 4 Chair' },
   // 5. Lower Bunk Bed 1 Edge (Left side, facing into room)
-  { id: 'hostel-seat-5', position: [-2.5, 0.45, 2.8], rotation: Math.PI / 2, label: 'Bunk Bed 1' },
+  { id: 'hostel-seat-5', position: [-2.5, 0, 2.8], rotation: Math.PI / 2, label: 'Bunk Bed 1' },
   // 6. Lower Bunk Bed 2 Edge (Front wall, rotated 90 deg, facing into room)
-  { id: 'hostel-seat-6', position: [2.3, 0.45, -3.0], rotation: 0, label: 'Bunk Bed 2' },
+  { id: 'hostel-seat-6', position: [2.3, 0, -3.0], rotation: 0, label: 'Bunk Bed 2' },
 ];
 
 /**
@@ -53,6 +53,159 @@ export function isHostelPositionBlocked(x, z, y) {
   if (y < 0.8 && x > 1.25 && x < 3.35 && z < -3.05) return true;
 
   return false;
+}
+
+function HostelLightSwitch({ position, onToggleLights, lightsOn }) {
+  const groupRef = React.useRef();
+
+  React.useEffect(() => {
+    if (groupRef.current) {
+      const data = {
+        onToggleLights,
+        isLightSwitch: true
+      };
+      groupRef.current.userData = data;
+      groupRef.current.traverse((child) => {
+        child.userData = data;
+      });
+    }
+  }, [onToggleLights]);
+
+  return (
+    <group
+      ref={groupRef}
+      position={position}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggleLights();
+      }}
+    >
+      <mesh>
+        <boxGeometry args={[0.16, 0.22, 0.02]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.3} />
+      </mesh>
+      <mesh position={[0, 0, -0.015]}>
+        <boxGeometry args={[0.06, 0.08, 0.02]} />
+        <meshStandardMaterial color={lightsOn ? '#f59e0b' : '#334155'} />
+      </mesh>
+    </group>
+  );
+}
+
+function HostelChair({
+  seat,
+  idx,
+  isHovered,
+  isOccupied,
+  isCurrent,
+  onSeatSelect,
+  chairColor
+}) {
+  const groupRef = React.useRef();
+
+  React.useEffect(() => {
+    if (groupRef.current) {
+      const data = {
+        seatId: seat.id,
+        isOccupied,
+        onSelect: () => onSeatSelect(seat)
+      };
+      groupRef.current.userData = data;
+      groupRef.current.traverse((child) => {
+        child.userData = data;
+      });
+    }
+  }, [seat.id, isOccupied, onSeatSelect]);
+
+  return (
+    <group
+      ref={groupRef}
+      position={[seat.position[0], 0, seat.position[2]]}
+      rotation={[0, seat.rotation, 0]}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSeatSelect(seat);
+      }}
+    >
+      {/* 4 Metal Legs */}
+      {[
+        [-0.18, 0.22, -0.18],
+        [0.18, 0.22, -0.18],
+        [-0.18, 0.22, 0.18],
+        [0.18, 0.22, 0.18],
+      ].map(([cx, cy, cz], ci) => (
+        <mesh key={`chair-leg-${ci}`} position={[cx, cy, cz]} castShadow>
+          <cylinderGeometry args={[0.015, 0.015, 0.44, 8]} />
+          <meshStandardMaterial color="#334155" metalness={0.8} />
+        </mesh>
+      ))}
+
+      {/* Chair Seat Cushion */}
+      <mesh position={[0, 0.44, 0]} castShadow>
+        <boxGeometry args={[0.42, 0.05, 0.42]} />
+        <meshStandardMaterial
+          color={isCurrent ? '#10b981' : isHovered ? '#60a5fa' : isOccupied ? '#ef4444' : chairColor}
+          roughness={0.7}
+        />
+      </mesh>
+
+      {/* Chair Backrest */}
+      <mesh position={[0, 0.72, -0.18]} castShadow>
+        <boxGeometry args={[0.38, 0.42, 0.04]} />
+        <meshStandardMaterial
+          color={isCurrent ? '#10b981' : isHovered ? '#60a5fa' : isOccupied ? '#ef4444' : chairColor}
+          roughness={0.7}
+        />
+      </mesh>
+
+      {/* Jacket draped over Chair 1 */}
+      {idx === 1 && (
+        <mesh position={[0, 0.65, -0.22]}>
+          <boxGeometry args={[0.42, 0.45, 0.08]} />
+          <meshStandardMaterial color="#e2e8f0" roughness={0.9} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function HostelBedSeat({
+  seat,
+  isHovered,
+  isOccupied,
+  isCurrent,
+  onSeatSelect
+}) {
+  const meshRef = React.useRef();
+
+  React.useEffect(() => {
+    if (meshRef.current) {
+      const data = {
+        seatId: seat.id,
+        isOccupied,
+        onSelect: () => onSeatSelect(seat)
+      };
+      meshRef.current.userData = data;
+    }
+  }, [seat.id, isOccupied, onSeatSelect]);
+
+  return (
+    <mesh
+      ref={meshRef}
+      position={[seat.position[0], 0.55, seat.position[2]]}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSeatSelect(seat);
+      }}
+    >
+      <boxGeometry args={[0.55, 0.08, 0.55]} />
+      <meshStandardMaterial
+        color={isCurrent ? '#10b981' : isHovered ? '#60a5fa' : isOccupied ? '#ef4444' : '#cbd5e1'}
+        transparent
+        opacity={isHovered || isCurrent || isOccupied ? 0.7 : 0.0}
+      />
+    </mesh>
+  );
 }
 
 export function HostelRoom({
@@ -311,22 +464,11 @@ export function HostelRoom({
       </mesh>
 
       {/* Wall Light Switch Panel (Interactive toggle) */}
-      <group
+      <HostelLightSwitch
         position={[1.6, 1.35, 4.16]}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleLights();
-        }}
-      >
-        <mesh>
-          <boxGeometry args={[0.16, 0.22, 0.02]} />
-          <meshStandardMaterial color="#ffffff" roughness={0.3} />
-        </mesh>
-        <mesh position={[0, 0, -0.015]}>
-          <boxGeometry args={[0.06, 0.08, 0.02]} />
-          <meshStandardMaterial color={lightsOn ? '#f59e0b' : '#334155'} />
-        </mesh>
-      </group>
+        onToggleLights={onToggleLights}
+        lightsOn={lightsOn}
+      />
 
       {/* ============================================================== */}
       {/* 4. TALL MEDIUM BROWN WARDROBES / ALMIRAHS (Right Wall, X = +3.8) */}
@@ -1095,59 +1237,19 @@ export function HostelRoom({
         const isHovered = hoveredSeatId === seat.id;
         const isOccupied = !!occupiedSeatIds[seat.id];
         const isCurrent = currentSeatId === seat.id;
-
-        // Chair colors from photo: Yellow chair, Black mesh chair, Blue chair, White plastic chair
         const chairColor = idx === 1 ? '#eab308' : idx === 2 ? '#18181b' : idx === 3 ? '#0369a1' : '#f8fafc';
 
         return (
-          <group
+          <HostelChair
             key={seat.id}
-            position={[seat.position[0], 0, seat.position[2]]}
-            rotation={[0, seat.rotation, 0]}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSeatSelect(seat);
-            }}
-          >
-            {/* 4 Metal Legs */}
-            {[
-              [-0.18, 0.22, -0.18],
-              [0.18, 0.22, -0.18],
-              [-0.18, 0.22, 0.18],
-              [0.18, 0.22, 0.18],
-            ].map(([cx, cy, cz], ci) => (
-              <mesh key={`chair-leg-${ci}`} position={[cx, cy, cz]} castShadow>
-                <cylinderGeometry args={[0.015, 0.015, 0.44, 8]} />
-                <meshStandardMaterial color="#334155" metalness={0.8} />
-              </mesh>
-            ))}
-
-            {/* Chair Seat Cushion */}
-            <mesh position={[0, 0.44, 0]} castShadow>
-              <boxGeometry args={[0.42, 0.05, 0.42]} />
-              <meshStandardMaterial
-                color={isCurrent ? '#10b981' : isHovered ? '#60a5fa' : isOccupied ? '#ef4444' : chairColor}
-                roughness={0.7}
-              />
-            </mesh>
-
-            {/* Chair Backrest */}
-            <mesh position={[0, 0.72, -0.18]} castShadow>
-              <boxGeometry args={[0.38, 0.42, 0.04]} />
-              <meshStandardMaterial
-                color={isCurrent ? '#10b981' : isHovered ? '#60a5fa' : isOccupied ? '#ef4444' : chairColor}
-                roughness={0.7}
-              />
-            </mesh>
-
-            {/* Jacket draped over Chair 1 */}
-            {idx === 1 && (
-              <mesh position={[0, 0.65, -0.22]}>
-                <boxGeometry args={[0.42, 0.45, 0.08]} />
-                <meshStandardMaterial color="#e2e8f0" roughness={0.9} />
-              </mesh>
-            )}
-          </group>
+            seat={seat}
+            idx={idx}
+            isHovered={isHovered}
+            isOccupied={isOccupied}
+            isCurrent={isCurrent}
+            onSeatSelect={onSeatSelect}
+            chairColor={chairColor}
+          />
         );
       })}
 
@@ -1160,21 +1262,14 @@ export function HostelRoom({
         const isCurrent = currentSeatId === seat.id;
 
         return (
-          <mesh
+          <HostelBedSeat
             key={seat.id}
-            position={[seat.position[0], 0.55, seat.position[2]]}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSeatSelect(seat);
-            }}
-          >
-            <boxGeometry args={[0.55, 0.08, 0.55]} />
-            <meshStandardMaterial
-              color={isCurrent ? '#10b981' : isHovered ? '#60a5fa' : isOccupied ? '#ef4444' : '#cbd5e1'}
-              transparent
-              opacity={isHovered || isCurrent || isOccupied ? 0.7 : 0.0}
-            />
-          </mesh>
+            seat={seat}
+            isHovered={isHovered}
+            isOccupied={isOccupied}
+            isCurrent={isCurrent}
+            onSeatSelect={onSeatSelect}
+          />
         );
       })}
     </group>

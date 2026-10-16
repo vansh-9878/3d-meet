@@ -121,7 +121,7 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
       );
     };
 
-    // When Aim Mode is active, clicking canvas triggers center-screen raycast for clicking chairs!
+    // When Aim Mode is active, clicking canvas triggers center-screen raycast for clicking chairs, whiteboard, and light switch!
     const handleClick = (e) => {
       if (isCursorFree || viewMode === 'presentation') return;
 
@@ -140,14 +140,27 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
 
       const intersects = raycaster.intersectObjects(scene.children, true);
       for (const hit of intersects) {
-        // Only allow interacting within a reasonable distance (e.g. 6 meters)
-        if (hit.distance > 6.5) continue;
+        // Only allow interacting within a reasonable distance (e.g. 7 meters)
+        if (hit.distance > 7.0) continue;
 
         let curr = hit.object;
         while (curr) {
-          if (curr.userData && typeof curr.userData.onSelect === 'function') {
-            curr.userData.onSelect();
-            return;
+          if (curr.userData) {
+            if (typeof curr.userData.onSelect === 'function') {
+              e.stopPropagation();
+              curr.userData.onSelect();
+              return;
+            }
+            if (typeof curr.userData.onOpenWhiteboard === 'function') {
+              e.stopPropagation();
+              curr.userData.onOpenWhiteboard();
+              return;
+            }
+            if (typeof curr.userData.onToggleLights === 'function') {
+              e.stopPropagation();
+              curr.userData.onToggleLights();
+              return;
+            }
           }
           curr = curr.parent;
         }
@@ -158,6 +171,13 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
       if (document.pointerLockElement === canvas) {
         // Just locked: snap pointer to center
         pointer.set(0, 0);
+      }
+    };
+
+    const handlePointerDownCapture = () => {
+      if (!isCursorFree && viewMode === 'fpp') {
+        pointer.set(0, 0);
+        r3fRaycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
       }
     };
 
@@ -172,11 +192,13 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     // Use capture phase so we run before R3F synthetic event system
     canvas.addEventListener('click', handleClick, true);
+    canvas.addEventListener('pointerdown', handlePointerDownCapture, true);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       canvas.removeEventListener('click', handleClick, true);
+      canvas.removeEventListener('pointerdown', handlePointerDownCapture, true);
       if (document.pointerLockElement === canvas) {
         document.exitPointerLock?.();
       }
@@ -220,24 +242,24 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
       if (viewMode === 'fpp') {
         camera.position.set(
           playerPos.current.x,
-          playerPos.current.y + 1.35,
+          playerPos.current.y + 1.15,
           playerPos.current.z
         );
 
         const lookTarget = new THREE.Vector3(
           playerPos.current.x + Math.sin(currentYaw) * 5,
-          playerPos.current.y + 1.35 + mouseLook.current.pitch * 3.5,
+          playerPos.current.y + 1.15 + mouseLook.current.pitch * 3.5,
           playerPos.current.z + Math.cos(currentYaw) * 5
         );
         camera.lookAt(lookTarget);
       } else if (viewMode === 'tpp') {
         const camTarget = new THREE.Vector3(
-          playerPos.current.x - Math.sin(seatData.rotation) * 3.2,
-          playerPos.current.y + 2.4,
-          playerPos.current.z - Math.cos(seatData.rotation) * 3.2
+          playerPos.current.x - Math.sin(seatData.rotation) * 2.6,
+          playerPos.current.y + 1.7,
+          playerPos.current.z - Math.cos(seatData.rotation) * 2.6
         );
         camera.position.lerp(camTarget, 0.08);
-        camera.lookAt(playerPos.current.x, playerPos.current.y + 1.2, playerPos.current.z);
+        camera.lookAt(playerPos.current.x, playerPos.current.y + 0.9, playerPos.current.z);
       }
       return;
     }
@@ -271,6 +293,9 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
         // Front stage platform
         floorHeight = 0.44;
       }
+    } else if (mapType === 'hostel') {
+      // Hostel Room has a flat floor at 0. No invisible table!
+      floorHeight = 0;
     } else {
       const isOnTable =
         playerPos.current.x > -1.8 &&
@@ -282,7 +307,7 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
 
     // Spacebar Jump
     if (keys.current.jump && isGrounded.current) {
-      velocityY.current = 8.6; // High jump power to leap onto the 1.1m table
+      velocityY.current = mapType === 'office' ? 8.6 : 5.4;
       isGrounded.current = false;
     }
 
@@ -299,6 +324,13 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
     if (!isGrounded.current || playerPos.current.y > floorHeight) {
       velocityY.current -= gravity * delta;
       playerPos.current.y += velocityY.current * delta;
+
+      // Ceiling head bonk prevention (stops player from ever going through or beyond ceiling)
+      const maxCeilingY = mapType === 'hostel' ? 1.65 : mapType === 'theatre' ? 3.8 : 4.2;
+      if (playerPos.current.y > maxCeilingY) {
+        playerPos.current.y = maxCeilingY;
+        if (velocityY.current > 0) velocityY.current = 0;
+      }
 
       if (playerPos.current.y <= floorHeight) {
         playerPos.current.y = floorHeight;

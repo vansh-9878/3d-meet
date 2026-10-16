@@ -127,8 +127,20 @@ export function InteractiveWhiteboard({
   const frameW = width + 0.2;
   const frameH = height + 0.2;
 
+  const groupRef = useRef();
+
+  useEffect(() => {
+    if (groupRef.current) {
+      const data = { onOpenWhiteboard, isWhiteboard: true };
+      groupRef.current.userData = data;
+      groupRef.current.traverse((child) => {
+        child.userData = data;
+      });
+    }
+  }, [onOpenWhiteboard]);
+
   return (
-    <group position={position} rotation={rotation} scale={scale}>
+    <group ref={groupRef} position={position} rotation={rotation} scale={scale}>
       {/* Heavy Aluminium Bezel Frame */}
       <mesh castShadow>
         <boxGeometry args={[frameW, frameH, 0.08]} />
