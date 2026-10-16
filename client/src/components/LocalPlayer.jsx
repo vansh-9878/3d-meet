@@ -40,8 +40,26 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
   mapType = 'office',
   collisionFn = null
 }, ref) {
+  const getSpawnForMap = (m) => {
+    if (m === 'theatre') return new THREE.Vector3(0, 0, 8.2);
+    if (m === 'hostel') return new THREE.Vector3(0.5, 0, 1.8);
+    return new THREE.Vector3(0, 0, 5.0);
+  };
+
   const keys = useKeyboardControls();
-  const playerPos = useRef(new THREE.Vector3(0, 0, 5.0));
+  const playerPos = useRef(getSpawnForMap(mapType));
+
+  // Sync position on mount or when mapType changes
+  useEffect(() => {
+    if (!isSitting) {
+      const defaultSpawn = getSpawnForMap(mapType);
+      playerPos.current.copy(defaultSpawn);
+      playerRot.current = Math.PI;
+      velocityY.current = 0;
+      isGrounded.current = true;
+      mouseLook.current.pitch = 0;
+    }
+  }, [mapType]);
 
   // Expose teleportation method
   useImperativeHandle(ref, () => ({
@@ -176,11 +194,11 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
         camera.position.lerp(cinemaCamPos, 0.08);
         camera.lookAt(new THREE.Vector3(0, 3.35, -10.2));
       } else if (mapType === 'hostel') {
-        // In Hostel Room: TV is mounted on Right Wall at [3.7, 1.95, -2.1] facing -X.
-        // Place camera at [1.3, 1.95, -2.1] looking straight at [3.7, 1.95, -2.1]
-        const hostelTvCamPos = new THREE.Vector3(1.3, 1.95, -2.1);
+        // In Hostel Room: TV is mounted on Right Wall at [3.7, 1.95, -1.4] facing -X.
+        // Place camera at [1.3, 1.95, -1.4] looking straight at [3.7, 1.95, -1.4]
+        const hostelTvCamPos = new THREE.Vector3(1.3, 1.95, -1.4);
         camera.position.lerp(hostelTvCamPos, 0.08);
-        camera.lookAt(new THREE.Vector3(3.7, 1.95, -2.1));
+        camera.lookAt(new THREE.Vector3(3.7, 1.95, -1.4));
       } else {
         // In Office: TV center is at [0, 4.2, -11.6]. Place camera at [0, 4.2, -6.8] looking straight at [0, 4.2, -11.6]
         const tvCamPos = new THREE.Vector3(0, 4.2, -6.8);
@@ -225,6 +243,18 @@ export const LocalPlayer = forwardRef(function LocalPlayer({
     }
 
     seatedYawOffset.current = 0;
+
+    // Safety boundary check for hostel to prevent ever spawning or getting stuck outside:
+    if (mapType === 'hostel') {
+      if (
+        playerPos.current.z > 3.8 ||
+        playerPos.current.z < -3.8 ||
+        playerPos.current.x > 3.5 ||
+        playerPos.current.x < -3.5
+      ) {
+        playerPos.current.set(0.5, 0, 1.8);
+      }
+    }
 
     // 3. Physics & Jump Mechanics (SPACEBAR exclusively for jumping):
     const gravity = 22.0;

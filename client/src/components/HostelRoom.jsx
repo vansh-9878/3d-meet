@@ -16,37 +16,41 @@ export const HOSTEL_SEAT_POSITIONS = [
   { id: 'hostel-seat-2', position: [-2.2, 0.45, -0.7], rotation: -Math.PI / 2, label: 'Desk 2 Chair' },
   // 3. Study Desk 3 Chair (Towards entrance)
   { id: 'hostel-seat-3', position: [-2.2, 0.45, 0.8], rotation: -Math.PI / 2, label: 'Desk 3 Chair' },
-  // 4. Window Desk Chair
-  { id: 'hostel-seat-4', position: [-0.6, 0.45, -3.2], rotation: 0, label: 'Window Desk Chair' },
-  // 5. Lower Bunk Bed 1 Edge (Entrance side)
-  { id: 'hostel-seat-5', position: [-1.2, 0.45, 2.8], rotation: Math.PI / 2, label: 'Bunk Bed 1' },
-  // 6. Lower Bunk Bed 2 Edge (Window side)
-  { id: 'hostel-seat-6', position: [0.8, 0.45, -2.8], rotation: -Math.PI / 2, label: 'Bunk Bed 2' },
+  // 4. Window Desk 4 Chair (Facing desk against front wall)
+  { id: 'hostel-seat-4', position: [-0.7, 0.45, -3.15], rotation: 0, label: 'Desk 4 Chair' },
+  // 5. Lower Bunk Bed 1 Edge (Left side, facing into room)
+  { id: 'hostel-seat-5', position: [-2.5, 0.45, 2.8], rotation: Math.PI / 2, label: 'Bunk Bed 1' },
+  // 6. Lower Bunk Bed 2 Edge (Front wall, rotated 90 deg, facing into room)
+  { id: 'hostel-seat-6', position: [2.3, 0.45, -3.0], rotation: 0, label: 'Bunk Bed 2' },
 ];
 
 /**
  * Collision bounds for Hostel Room:
  * - Room dimensions: X in [-3.6, 3.6], Z in [-3.9, 3.9]
- * - Study Desks: X in [-3.6, -2.4], Z in [-3.2, 1.4]
- * - Bunk Bed 1: X in [-3.4, -1.3], Z in [1.8, 3.9]
- * - Wardrobes: X in [2.9, 3.7], Z in [0.2, 3.8]
- * - Bunk Bed 2: X in [0.7, 2.9], Z in [-3.9, -1.8]
+ * - Left Study Desks (1, 2, 3): X in [-3.6, -2.5], Z in [-3.0, 1.4]
+ * - Front Window Desk 4: X in [-1.35, -0.05], Z in [-3.9, -3.3]
+ * - Bunk Bed 1 (Left corner): X in [-3.65, -2.5], Z in [1.75, 3.85]
+ * - Wardrobes: X in [2.85, 3.75], Z in [0.15, 3.8]
+ * - Bunk Bed 2 (Front wall, rotated 90 deg): X in [1.25, 3.35], Z in [-3.9, -3.05]
  */
 export function isHostelPositionBlocked(x, z, y) {
   // Outer perimeter walls
   if (x < -3.55 || x > 3.55 || z < -3.85 || z > 3.85) return true;
 
-  // Study Desks (allows sitting)
-  if (y < 0.95 && x < -2.6 && z > -3.2 && z < 1.4) return true;
+  // Left 3 Study Desks (allows sitting)
+  if (y < 0.95 && x < -2.5 && z > -3.0 && z < 1.4) return true;
+
+  // Front Wall Study Desk 4 (allows sitting)
+  if (y < 0.95 && x > -1.35 && x < -0.05 && z < -3.3) return true;
 
   // Bunk Bed 1 base (allows jumping on mattress if y > 0.8)
-  if (y < 0.8 && x < -1.4 && x > -3.4 && z > 1.8 && z < 3.85) return true;
+  if (y < 0.8 && x < -2.5 && z > 1.75 && z < 3.85) return true;
 
   // Wardrobes bank (tall, completely impassable)
-  if (x > 2.9 && z > 0.2 && z < 3.8) return true;
+  if (x > 2.85 && z > 0.15 && z < 3.8) return true;
 
-  // Bunk Bed 2 base (allows jumping on mattress if y > 0.8)
-  if (y < 0.8 && x > 0.8 && x < 2.9 && z > -3.85 && z < -1.8) return true;
+  // Bunk Bed 2 base (rotated 90 deg along front wall, allows jumping on mattress if y > 0.8)
+  if (y < 0.8 && x > 1.25 && x < 3.35 && z < -3.05) return true;
 
   return false;
 }
@@ -81,30 +85,52 @@ export function HostelRoom({
         shadow-mapSize-height={1024}
       />
 
-      {/* Ceiling Tube Light 1 (Over Desks & Bunk 1) */}
-      <group position={[-1.6, 3.32, 0]}>
+      {/* Ceiling Tube Light 1 (Horizontal across room, Front Section, flush to ceiling) */}
+      <group position={[0, 3.385, -1.2]}>
+        {/* Metal Batten Fixture against ceiling */}
         <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[0.16, 0.08, 2.4]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.8} />
+          <boxGeometry args={[2.4, 0.03, 0.12]} />
+          <meshStandardMaterial color="#e2e8f0" metalness={0.6} roughness={0.3} />
         </mesh>
-        <mesh position={[0, -0.04, 0]}>
-          <cylinderGeometry args={[0.035, 0.035, 2.2, 8]} rotation={[Math.PI / 2, 0, 0]} />
+        {/* Horizontal Glass Tube aligned across X */}
+        <mesh position={[0, -0.024, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.025, 0.025, 2.2, 12]} />
           <meshBasicMaterial color={lightsOn ? '#ffffff' : '#64748b'} />
         </mesh>
-        {lightsOn && <pointLight position={[0, -0.2, 0]} intensity={1.4} distance={9} color="#fffbeb" />}
+        {/* Chrome End Caps */}
+        <mesh position={[-1.12, -0.024, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.028, 0.028, 0.04, 12]} />
+          <meshStandardMaterial color="#475569" metalness={0.8} />
+        </mesh>
+        <mesh position={[1.12, -0.024, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.028, 0.028, 0.04, 12]} />
+          <meshStandardMaterial color="#475569" metalness={0.8} />
+        </mesh>
+        {lightsOn && <pointLight position={[0, -0.2, 0]} intensity={1.5} distance={9} color="#fffbeb" />}
       </group>
 
-      {/* Ceiling Tube Light 2 (Over Wardrobes & Bunk 2) */}
-      <group position={[1.6, 3.32, 0]}>
+      {/* Ceiling Tube Light 2 (Horizontal across room, Back Section, flush to ceiling) */}
+      <group position={[0, 3.385, 1.5]}>
+        {/* Metal Batten Fixture against ceiling */}
         <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[0.16, 0.08, 2.4]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.8} />
+          <boxGeometry args={[2.4, 0.03, 0.12]} />
+          <meshStandardMaterial color="#e2e8f0" metalness={0.6} roughness={0.3} />
         </mesh>
-        <mesh position={[0, -0.04, 0]}>
-          <cylinderGeometry args={[0.035, 0.035, 2.2, 8]} rotation={[Math.PI / 2, 0, 0]} />
+        {/* Horizontal Glass Tube aligned across X */}
+        <mesh position={[0, -0.024, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.025, 0.025, 2.2, 12]} />
           <meshBasicMaterial color={lightsOn ? '#ffffff' : '#64748b'} />
         </mesh>
-        {lightsOn && <pointLight position={[0, -0.2, 0]} intensity={1.4} distance={9} color="#fffbeb" />}
+        {/* Chrome End Caps */}
+        <mesh position={[-1.12, -0.024, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.028, 0.028, 0.04, 12]} />
+          <meshStandardMaterial color="#475569" metalness={0.8} />
+        </mesh>
+        <mesh position={[1.12, -0.024, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.028, 0.028, 0.04, 12]} />
+          <meshStandardMaterial color="#475569" metalness={0.8} />
+        </mesh>
+        {lightsOn && <pointLight position={[0, -0.2, 0]} intensity={1.5} distance={9} color="#fffbeb" />}
       </group>
 
       {/* Desk 2 Laptop & Lamp Glow */}
@@ -279,7 +305,7 @@ export function HostelRoom({
       </group>
 
       {/* Square Ventilation Grille */}
-      <mesh position={[0.2, 2.75, 4.17]}>
+      <mesh position={[0.8, 2.75, 4.17]}>
         <planeGeometry args={[0.3, 0.3]} />
         <meshStandardMaterial color="#d4d4d8" roughness={0.5} />
       </mesh>
@@ -303,13 +329,13 @@ export function HostelRoom({
       </group>
 
       {/* ============================================================== */}
-      {/* 4. TALL DARK WOODEN WARDROBES (Right Wall, X = +3.8)           */}
+      {/* 4. TALL MEDIUM BROWN WARDROBES / ALMIRAHS (Right Wall, X = +3.8) */}
       {/* ============================================================== */}
       <group position={[3.35, 1.45, 1.95]}>
-        {/* Main Wardrobe Cabinet Shell */}
+        {/* Main Wardrobe Cabinet Shell: Medium Brown Wood */}
         <mesh castShadow receiveShadow>
           <boxGeometry args={[0.75, 2.9, 3.6]} />
-          <meshStandardMaterial color="#2c1810" roughness={0.65} metalness={0.1} />
+          <meshStandardMaterial color="#854d0e" roughness={0.6} metalness={0.08} />
         </mesh>
 
         {/* 5 Individual Door Panels with Grooves and Vertical Wooden Handles */}
@@ -318,14 +344,14 @@ export function HostelRoom({
             <mesh>
               <boxGeometry args={[0.02, 2.84, 0.68]} />
               <meshStandardMaterial
-                color={i % 2 === 0 ? '#331c13' : '#2b170f'}
-                roughness={0.6}
+                color={i % 2 === 0 ? '#935a32' : '#874d26'}
+                roughness={0.55}
               />
             </mesh>
             {/* Long Vertical Wooden Handle */}
             <mesh position={[-0.025, 0, i % 2 === 0 ? 0.28 : -0.28]}>
               <boxGeometry args={[0.03, 0.42, 0.04]} />
-              <meshStandardMaterial color="#4a2818" roughness={0.4} />
+              <meshStandardMaterial color="#502b15" roughness={0.4} />
             </mesh>
           </group>
         ))}
@@ -407,12 +433,12 @@ export function HostelRoom({
       </group>
 
       {/* ============================================================== */}
-      {/* 5. INTERACTIVE 16:9 TV (Right Wall, X = +3.72, Z = -2.0)       */}
+      {/* 5. INTERACTIVE 16:9 TV (Right Wall, X = +3.7, Z = -1.4)        */}
       {/* ============================================================== */}
       <PresentationScreen
         screenStream={screenStream}
         presenterName={presenterName}
-        position={[3.7, 1.95, -2.1]}
+        position={[3.7, 1.95, -1.4]}
         rotation={[0, -Math.PI / 2, 0]}
         scale={[1, 1, 1]}
         width={2.2}
@@ -421,9 +447,9 @@ export function HostelRoom({
       />
 
       {/* ============================================================== */}
-      {/* 6. BUNK BED 1 (Black Metal Frame, near Entrance, Left/Center)  */}
+      {/* 6. BUNK BED 1 (Black Metal Frame, tucked into Left/Back Corner) */}
       {/* ============================================================== */}
-      <group position={[-2.3, 0, 2.8]}>
+      <group position={[-3.1, 0, 2.8]}>
         {/* 4 Vertical Black Metal Posts */}
         {[
           [-0.52, 1.1, -1.02],
@@ -571,9 +597,9 @@ export function HostelRoom({
       </group>
 
       {/* ============================================================== */}
-      {/* 8. BUNK BED 2 (Front-Right, near Window, Z = -2.8)             */}
+      {/* 8. BUNK BED 2 (Front Wall, rotated 90 deg, snug against wall)  */}
       {/* ============================================================== */}
-      <group position={[1.8, 0, -2.8]}>
+      <group position={[2.3, 0, -3.6]} rotation={[0, Math.PI / 2, 0]}>
         {/* 4 Vertical Black Metal Posts */}
         {[
           [-0.52, 1.1, -1.02],
@@ -852,6 +878,51 @@ export function HostelRoom({
         </mesh>
       </group>
 
+      {/* DESK 4 (Front Window Wall Study Desk for 4th Chair, X = -0.7, Z = -3.7) */}
+      <group position={[-0.7, 0, -3.7]}>
+        {/* Tabletop: Dark Brown Wood */}
+        <mesh position={[0, 0.74, 0]} castShadow receiveShadow>
+          <boxGeometry args={[1.15, 0.04, 0.75]} />
+          <meshStandardMaterial color="#3b2214" roughness={0.6} />
+        </mesh>
+        {/* 4 Black Metal Legs */}
+        {[
+          [-0.52, 0.37, -0.32],
+          [0.52, 0.37, -0.32],
+          [-0.52, 0.37, 0.32],
+          [0.52, 0.37, 0.32],
+        ].map(([lx, ly, lz], li) => (
+          <mesh key={`d4-leg-${li}`} position={[lx, ly, lz]} castShadow>
+            <boxGeometry args={[0.04, 0.74, 0.04]} />
+            <meshStandardMaterial color="#1e293b" metalness={0.8} />
+          </mesh>
+        ))}
+
+        {/* Desk 4 Props: Open Study Notebook, Blue Pen, Ceramic Coffee Mug, Table Clock */}
+        <mesh position={[-0.1, 0.765, 0.05]} rotation={[0, -0.06, 0]}>
+          <boxGeometry args={[0.26, 0.015, 0.34]} />
+          <meshStandardMaterial color="#f8fafc" roughness={0.8} />
+        </mesh>
+        <mesh position={[0.1, 0.775, 0.05]} rotation={[0, 0.15, 0]}>
+          <cylinderGeometry args={[0.005, 0.005, 0.14, 6]} />
+          <meshStandardMaterial color="#2563eb" />
+        </mesh>
+        <group position={[0.32, 0.81, -0.1]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.042, 0.038, 0.1, 12]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.2} />
+          </mesh>
+          <mesh position={[0.048, 0, 0]}>
+            <boxGeometry args={[0.02, 0.05, 0.02]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.2} />
+          </mesh>
+        </group>
+        <mesh position={[-0.38, 0.79, -0.15]} rotation={[0, 0.3, 0]}>
+          <boxGeometry args={[0.08, 0.08, 0.04]} />
+          <meshStandardMaterial color="#09090b" roughness={0.4} />
+        </mesh>
+      </group>
+
       {/* ============================================================== */}
       {/* 10. MASSIVE WALL-MOUNTED STORAGE SHELVES (Left Wall, Y = 2.2) */}
       {/* ============================================================== */}
@@ -1002,7 +1073,7 @@ export function HostelRoom({
       </group>
 
       {/* ============================================================== */}
-      {/* 11. INTERACTIVE WHITEBOARD (Left Wall, near Desk 3 / Door)     */}
+      {/* 11. INTERACTIVE WHITEBOARD (Empty Back Wall, X = -0.5, Z = 4.14) */}
       {/* ============================================================== */}
       <InteractiveWhiteboard
         strokes={whiteboardStrokes}
@@ -1010,9 +1081,9 @@ export function HostelRoom({
         currentSocketId={currentSocketId}
         onOpenWhiteboard={onOpenWhiteboard}
         isCursorFree={isCursorFree}
-        position={[-3.75, 1.85, 2.3]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={[0.7, 0.7, 0.7]}
+        position={[-0.5, 1.85, 4.14]}
+        rotation={[0, Math.PI, 0]}
+        scale={[0.75, 0.75, 0.75]}
         width={2.2}
         height={1.3}
       />
@@ -1025,8 +1096,8 @@ export function HostelRoom({
         const isOccupied = !!occupiedSeatIds[seat.id];
         const isCurrent = currentSeatId === seat.id;
 
-        // Chair colors from photo: Yellow chair, Black mesh chair, White plastic chair
-        const chairColor = idx === 1 ? '#eab308' : idx === 2 ? '#18181b' : '#f8fafc';
+        // Chair colors from photo: Yellow chair, Black mesh chair, Blue chair, White plastic chair
+        const chairColor = idx === 1 ? '#eab308' : idx === 2 ? '#18181b' : idx === 3 ? '#0369a1' : '#f8fafc';
 
         return (
           <group

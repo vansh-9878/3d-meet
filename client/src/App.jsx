@@ -141,7 +141,7 @@ export default function App() {
       console.log(`[Socket Connected] Connected to server at ${SOCKET_SERVER_URL} (ID: ${s.id})`);
       if (hasEnteredRef.current) {
         const activeRoom = (roomIdRef.current && roomIdRef.current.trim()) ? roomIdRef.current.trim().toLowerCase() : 'main-office';
-        const spawn = mapTypeRef.current === 'theatre' ? [0, 0, 8.2] : mapTypeRef.current === 'hostel' ? [1.5, 0, 2.5] : [0, 0, 5.0];
+        const spawn = mapTypeRef.current === 'theatre' ? [0, 0, 8.2] : mapTypeRef.current === 'hostel' ? [0.5, 0, 1.8] : [0, 0, 5.0];
         s.emit('join-room', {
           roomId: activeRoom,
           mapType: mapTypeRef.current,
@@ -341,7 +341,7 @@ export default function App() {
     s.on('map-changed', ({ mapType: newMapType }) => {
       setMapType(newMapType);
       setCurrentSeat(null);
-      const spawn = newMapType === 'theatre' ? [0, 0, 8.2] : newMapType === 'hostel' ? [1.5, 0, 2.5] : [0, 0, 5.0];
+      const spawn = newMapType === 'theatre' ? [0, 0, 8.2] : newMapType === 'hostel' ? [0.5, 0, 1.8] : [0, 0, 5.0];
       localPlayerRef.current?.teleport(spawn, Math.PI);
     });
 
@@ -445,7 +445,7 @@ export default function App() {
     const newUrl = `${window.location.pathname}?room=${encodeURIComponent(sanitizedRoom)}&map=${encodeURIComponent(mapType)}`;
     window.history.replaceState({ path: newUrl }, '', newUrl);
 
-    const spawn = mapType === 'theatre' ? [0, 0, 8.2] : mapType === 'hostel' ? [1.5, 0, 2.5] : [0, 0, 5.0];
+    const spawn = mapType === 'theatre' ? [0, 0, 8.2] : mapType === 'hostel' ? [0.5, 0, 1.8] : [0, 0, 5.0];
     socket.emit('join-room', {
       roomId: sanitizedRoom,
       mapType,
