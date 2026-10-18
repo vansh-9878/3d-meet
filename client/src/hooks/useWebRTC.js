@@ -478,15 +478,17 @@ export function useWebRTC(socket, roomId, userName) {
     } else {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always', frameRate: { ideal: 30 } },
+          video: {
+            cursor: 'always',
+            frameRate: { ideal: 30, max: 60 }
+          },
           audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 2
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
           },
           systemAudio: 'include',
-          selfBrowserSurface: 'include'
+          selfBrowserSurface: 'exclude'
         });
 
         screenStreamRef.current = stream;

@@ -44,7 +44,9 @@ function RemoteScreenAudio({ stream, isLocalPresenter }) {
       const audioTracks = stream.getAudioTracks();
       if (audioTracks.length > 0) {
         console.log('[RemoteScreenAudio] Screen audio tracks found:', audioTracks.length);
-        audio.srcObject = stream;
+        if (audio.srcObject !== stream) {
+          audio.srcObject = stream;
+        }
         audio.volume = 1.0;
         const playPromise = audio.play();
         if (playPromise !== undefined) {
@@ -62,14 +64,17 @@ function RemoteScreenAudio({ stream, isLocalPresenter }) {
           });
         }
       } else {
+        audio.pause();
         audio.srcObject = null;
       }
     } else {
+      audio.pause();
       audio.srcObject = null;
     }
 
     return () => {
       if (audio) {
+        audio.pause();
         audio.srcObject = null;
       }
     };
@@ -1144,7 +1149,7 @@ export default function App() {
       {/* Remote Screen Share Audio Playback Element */}
       <RemoteScreenAudio
         stream={screenPresenter?.stream}
-        isLocalPresenter={screenPresenter?.presenterId === socket?.id}
+        isLocalPresenter={isScreenSharing || (screenPresenter && screenPresenter.presenterId === socket?.id)}
       />
 
       {/* Floating HUD visibility indicator when hidden */}

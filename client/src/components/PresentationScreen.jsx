@@ -18,41 +18,7 @@ export function PresentationScreen({
   includeSpeakerBar = true
 }) {
   const videoRef = useRef(null);
-  const audioRef = useRef(null);
   const [videoTexture, setVideoTexture] = useState(null);
-
-  // Play incoming screen share audio tracks for viewers
-  useEffect(() => {
-    if (!screenStream) {
-      if (audioRef.current) {
-        audioRef.current.srcObject = null;
-      }
-      return;
-    }
-
-    const audioTracks = screenStream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      let audio = audioRef.current;
-      if (!audio) {
-        audio = new Audio();
-        audio.autoplay = true;
-        audioRef.current = audio;
-      }
-      audio.srcObject = new MediaStream(audioTracks);
-      audio.volume = 1.0;
-      audio.play().catch(e => console.warn('[PresentationScreen] Screen audio playback blocked:', e));
-    } else {
-      if (audioRef.current) {
-        audioRef.current.srcObject = null;
-      }
-    }
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.srcObject = null;
-      }
-    };
-  }, [screenStream]);
 
   useEffect(() => {
     let video = videoRef.current;
@@ -65,25 +31,31 @@ export function PresentationScreen({
       video.setAttribute('webkit-playsinline', '');
       video.setAttribute('muted', '');
       video.style.position = 'fixed';
-      video.style.bottom = '0px';
-      video.style.right = '0px';
-      video.style.width = '4px';
-      video.style.height = '4px';
+      video.style.top = '0px';
+      video.style.left = '0px';
+      video.style.width = '16px';
+      video.style.height = '16px';
       video.style.opacity = '0.01';
       video.style.pointerEvents = 'none';
-      video.style.zIndex = '-100';
+      video.style.zIndex = '99999';
       document.body.appendChild(video);
       videoRef.current = video;
     }
 
     const autoResume = () => {
-      if (videoRef.current && videoRef.current.paused) {
-        videoRef.current.play().catch(() => {});
+      const v = videoRef.current;
+      if (v) {
+        if (v.paused && !v.ended) {
+          v.play().catch(() => {});
+        }
       }
     };
 
     if (screenStream) {
-      video.srcObject = screenStream;
+      if (video.srcObject !== screenStream) {
+        video.srcObject = screenStream;
+      }
+
       const handlePlay = () => {
         setVideoTexture(prev => {
           if (!prev) {
@@ -99,9 +71,7 @@ export function PresentationScreen({
         });
       };
 
-      video.addEventListener('loadedmetadata', () => {
-        video.play().then(handlePlay).catch(e => console.warn('Presentation video auto-play prevented:', e));
-      });
+      video.addEventListener('loadedmetadata', handlePlay);
       video.addEventListener('playing', handlePlay);
       video.addEventListener('loadeddata', handlePlay);
       video.addEventListener('canplay', handlePlay);
@@ -109,27 +79,7 @@ export function PresentationScreen({
       window.addEventListener('focus', autoResume);
       document.addEventListener('visibilitychange', autoResume);
 
-      video.play()
-        .then(handlePlay)
-        .catch(e => {
-          console.warn('Presentation video auto-play prevented:', e);
-          const resumeOnGesture = () => {
-            if (videoRef.current) {
-              videoRef.current.play().then(handlePlay).catch(() => {});
-            }
-            window.removeEventListener('click', resumeOnGesture);
-            window.removeEventListener('keydown', resumeOnGesture);
-          };
-          window.addEventListener('click', resumeOnGesture, { once: true });
-          window.addEventListener('keydown', resumeOnGesture, { once: true });
-        });
-
-      screenStream.onaddtrack = () => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = screenStream;
-          videoRef.current.play().then(handlePlay).catch(() => {});
-        }
-      };
+      video.play().then(handlePlay).catch(() => {});
 
       screenStream.getVideoTracks().forEach(track => {
         track.onunmute = () => {
@@ -138,8 +88,14 @@ export function PresentationScreen({
           }
         };
       });
+
+      if (video.readyState >= 2) {
+        handlePlay();
+      }
     } else {
-      video.srcObject = null;
+      if (video) {
+        video.srcObject = null;
+      }
       setVideoTexture(prev => {
         if (prev) prev.dispose();
         return null;
@@ -152,17 +108,28 @@ export function PresentationScreen({
       if (video) {
         video.removeEventListener('pause', autoResume);
       }
-      if (videoTexture) {
-        videoTexture.dispose();
-      }
     };
   }, [screenStream]);
+
+  // Clean up DOM video element on complete unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+        if (videoRef.current.parentNode) {
+          videoRef.current.parentNode.removeChild(videoRef.current);
+        }
+        videoRef.current = null;
+      }
+    };
+  }, []);
 
   // Keep screen share texture updated on every rendered frame and resume if paused
   useFrame(() => {
     const video = videoRef.current;
     if (videoTexture && video) {
-      if (video.paused && video.readyState >= 2) {
+      if (video.paused && !video.ended && video.readyState >= 2) {
         video.play().catch(() => {});
       }
       if (video.readyState >= video.HAVE_CURRENT_DATA) {

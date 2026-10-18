@@ -27,40 +27,6 @@ export function TheatreScreen({
   const [hasVideoError, setHasVideoError] = useState(false);
   const meshRef = useRef(null);
   const screenVideoRef = useRef(null);
-  const screenAudioRef = useRef(null);
-
-  // Play incoming screen share audio tracks for viewers
-  useEffect(() => {
-    if (!screenStream) {
-      if (screenAudioRef.current) {
-        screenAudioRef.current.srcObject = null;
-      }
-      return;
-    }
-
-    const audioTracks = screenStream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      let audio = screenAudioRef.current;
-      if (!audio) {
-        audio = new Audio();
-        audio.autoplay = true;
-        screenAudioRef.current = audio;
-      }
-      audio.srcObject = new MediaStream(audioTracks);
-      audio.volume = 1.0;
-      audio.play().catch((e) => console.warn('[TheatreScreen] Screen audio playback blocked:', e));
-    } else {
-      if (screenAudioRef.current) {
-        screenAudioRef.current.srcObject = null;
-      }
-    }
-
-    return () => {
-      if (screenAudioRef.current) {
-        screenAudioRef.current.srcObject = null;
-      }
-    };
-  }, [screenStream]);
 
   // 1. Handle live screen sharing stream (WebRTC)
   useEffect(() => {
@@ -74,25 +40,31 @@ export function TheatreScreen({
       video.setAttribute('webkit-playsinline', '');
       video.setAttribute('muted', '');
       video.style.position = 'fixed';
-      video.style.bottom = '0px';
-      video.style.right = '0px';
-      video.style.width = '4px';
-      video.style.height = '4px';
+      video.style.top = '0px';
+      video.style.left = '0px';
+      video.style.width = '16px';
+      video.style.height = '16px';
       video.style.opacity = '0.01';
       video.style.pointerEvents = 'none';
-      video.style.zIndex = '-100';
+      video.style.zIndex = '99999';
       document.body.appendChild(video);
       screenVideoRef.current = video;
     }
 
     const autoResume = () => {
-      if (screenVideoRef.current && screenVideoRef.current.paused) {
-        screenVideoRef.current.play().catch(() => {});
+      const v = screenVideoRef.current;
+      if (v) {
+        if (v.paused && !v.ended) {
+          v.play().catch(() => {});
+        }
       }
     };
 
     if (screenStream) {
-      video.srcObject = screenStream;
+      if (video.srcObject !== screenStream) {
+        video.srcObject = screenStream;
+      }
+
       const handlePlay = () => {
         setScreenTexture((prev) => {
           if (!prev) {
@@ -108,9 +80,7 @@ export function TheatreScreen({
         });
       };
 
-      video.addEventListener('loadedmetadata', () => {
-        video.play().then(handlePlay).catch((e) => console.warn('Theatre screen share auto-play prevented:', e));
-      });
+      video.addEventListener('loadedmetadata', handlePlay);
       video.addEventListener('playing', handlePlay);
       video.addEventListener('loadeddata', handlePlay);
       video.addEventListener('canplay', handlePlay);
@@ -127,11 +97,18 @@ export function TheatreScreen({
           }
         };
       });
+
+      if (video.readyState >= 2) {
+        handlePlay();
+      }
     } else {
       if (video) {
         video.srcObject = null;
       }
-      setScreenTexture(null);
+      setScreenTexture((prev) => {
+        if (prev) prev.dispose();
+        return null;
+      });
     }
 
     return () => {
@@ -139,10 +116,23 @@ export function TheatreScreen({
       document.removeEventListener('visibilitychange', autoResume);
       if (video) {
         video.removeEventListener('pause', autoResume);
-        video.srcObject = null;
       }
     };
   }, [screenStream]);
+
+  // Clean up DOM video element on complete unmount
+  useEffect(() => {
+    return () => {
+      if (screenVideoRef.current) {
+        screenVideoRef.current.pause();
+        screenVideoRef.current.srcObject = null;
+        if (screenVideoRef.current.parentNode) {
+          screenVideoRef.current.parentNode.removeChild(screenVideoRef.current);
+        }
+        screenVideoRef.current = null;
+      }
+    };
+  }, []);
 
   // 2. Handle movie / local video element
   useEffect(() => {
