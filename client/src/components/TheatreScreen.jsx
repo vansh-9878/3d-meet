@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 /**
@@ -73,15 +74,22 @@ export function TheatreScreen({
       video.setAttribute('webkit-playsinline', '');
       video.setAttribute('muted', '');
       video.style.position = 'fixed';
-      video.style.top = '-9999px';
-      video.style.left = '-9999px';
-      video.style.width = '640px';
-      video.style.height = '360px';
-      video.style.opacity = '0';
+      video.style.bottom = '0px';
+      video.style.right = '0px';
+      video.style.width = '4px';
+      video.style.height = '4px';
+      video.style.opacity = '0.01';
       video.style.pointerEvents = 'none';
+      video.style.zIndex = '-100';
       document.body.appendChild(video);
       screenVideoRef.current = video;
     }
+
+    const autoResume = () => {
+      if (screenVideoRef.current && screenVideoRef.current.paused) {
+        screenVideoRef.current.play().catch(() => {});
+      }
+    };
 
     if (screenStream) {
       video.srcObject = screenStream;
@@ -106,8 +114,19 @@ export function TheatreScreen({
       video.addEventListener('playing', handlePlay);
       video.addEventListener('loadeddata', handlePlay);
       video.addEventListener('canplay', handlePlay);
+      video.addEventListener('pause', autoResume);
+      window.addEventListener('focus', autoResume);
+      document.addEventListener('visibilitychange', autoResume);
 
       video.play().then(handlePlay).catch(() => {});
+
+      screenStream.getVideoTracks().forEach(track => {
+        track.onunmute = () => {
+          if (screenVideoRef.current) {
+            screenVideoRef.current.play().then(handlePlay).catch(() => {});
+          }
+        };
+      });
     } else {
       if (video) {
         video.srcObject = null;
@@ -116,7 +135,10 @@ export function TheatreScreen({
     }
 
     return () => {
+      window.removeEventListener('focus', autoResume);
+      document.removeEventListener('visibilitychange', autoResume);
       if (video) {
+        video.removeEventListener('pause', autoResume);
         video.srcObject = null;
       }
     };
@@ -178,6 +200,26 @@ export function TheatreScreen({
       };
     }
   }, [onOpenPlayer]);
+
+  // Keep screen share & movie textures updated on every rendered frame and resume if paused
+  useFrame(() => {
+    const sVideo = screenVideoRef.current;
+    if (sVideo && screenTexture) {
+      if (sVideo.paused && sVideo.readyState >= 2) {
+        sVideo.play().catch(() => {});
+      }
+      if (sVideo.readyState >= 2) {
+        screenTexture.needsUpdate = true;
+      }
+    }
+
+    const mVideo = videoRef?.current;
+    if (mVideo && videoTexture && isPlaying) {
+      if (mVideo.readyState >= 2) {
+        videoTexture.needsUpdate = true;
+      }
+    }
+  });
 
   // Screen share takes priority if present, otherwise local video
   const activeTexture = screenTexture || (videoTexture && !hasVideoError ? videoTexture : null);

@@ -338,6 +338,9 @@ export function MeetingHUD({
             <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 col-span-2">
               <strong className="text-blue-700 font-mono">V Key</strong> : Toggle Free Mouse Cursor
             </div>
+            <div className="bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 col-span-2">
+              <strong className="text-blue-700 font-mono">I Key</strong> : Hide / Show All Screen Boxes
+            </div>
             {mapType === 'theatre' && (
               <div className="bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 col-span-2 text-red-900">
                 <strong className="text-red-700 font-mono">L Key</strong> : Toggle Cinema Lights

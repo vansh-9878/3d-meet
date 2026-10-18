@@ -65,15 +65,22 @@ export function PresentationScreen({
       video.setAttribute('webkit-playsinline', '');
       video.setAttribute('muted', '');
       video.style.position = 'fixed';
-      video.style.top = '-9999px';
-      video.style.left = '-9999px';
-      video.style.width = '640px';
-      video.style.height = '360px';
-      video.style.opacity = '0';
+      video.style.bottom = '0px';
+      video.style.right = '0px';
+      video.style.width = '4px';
+      video.style.height = '4px';
+      video.style.opacity = '0.01';
       video.style.pointerEvents = 'none';
+      video.style.zIndex = '-100';
       document.body.appendChild(video);
       videoRef.current = video;
     }
+
+    const autoResume = () => {
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+    };
 
     if (screenStream) {
       video.srcObject = screenStream;
@@ -98,6 +105,9 @@ export function PresentationScreen({
       video.addEventListener('playing', handlePlay);
       video.addEventListener('loadeddata', handlePlay);
       video.addEventListener('canplay', handlePlay);
+      video.addEventListener('pause', autoResume);
+      window.addEventListener('focus', autoResume);
+      document.addEventListener('visibilitychange', autoResume);
 
       video.play()
         .then(handlePlay)
@@ -137,16 +147,25 @@ export function PresentationScreen({
     }
 
     return () => {
+      window.removeEventListener('focus', autoResume);
+      document.removeEventListener('visibilitychange', autoResume);
+      if (video) {
+        video.removeEventListener('pause', autoResume);
+      }
       if (videoTexture) {
         videoTexture.dispose();
       }
     };
   }, [screenStream]);
 
-  // Keep screen share texture updated on every rendered frame
+  // Keep screen share texture updated on every rendered frame and resume if paused
   useFrame(() => {
-    if (videoTexture && videoRef.current) {
-      if (videoRef.current.readyState >= videoRef.current.HAVE_CURRENT_DATA) {
+    const video = videoRef.current;
+    if (videoTexture && video) {
+      if (video.paused && video.readyState >= 2) {
+        video.play().catch(() => {});
+      }
+      if (video.readyState >= video.HAVE_CURRENT_DATA) {
         videoTexture.needsUpdate = true;
       }
     }

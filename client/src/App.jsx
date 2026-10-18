@@ -27,6 +27,66 @@ const SOCKET_SERVER_URL =
     ? `${window.location.protocol}//${window.location.hostname}:${SERVER_PORT}`
     : 'http://localhost:4000');
 
+/**
+ * RemoteScreenAudio:
+ * Dedicated DOM audio element to play remote screen sharing audio tracks cleanly
+ * without relying on Three.js canvas subcomponents. Local presenter is excluded
+ * so they don't hear their own audio echo.
+ */
+function RemoteScreenAudio({ stream, isLocalPresenter }) {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (stream && !isLocalPresenter) {
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        console.log('[RemoteScreenAudio] Screen audio tracks found:', audioTracks.length);
+        audio.srcObject = stream;
+        audio.volume = 1.0;
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn('[RemoteScreenAudio] Screen audio autoplay blocked:', err);
+            const resumeAudio = () => {
+              if (audioRef.current) {
+                audioRef.current.play().catch(() => {});
+              }
+              window.removeEventListener('click', resumeAudio);
+              window.removeEventListener('keydown', resumeAudio);
+            };
+            window.addEventListener('click', resumeAudio, { once: true });
+            window.addEventListener('keydown', resumeAudio, { once: true });
+          });
+        }
+      } else {
+        audio.srcObject = null;
+      }
+    } else {
+      audio.srcObject = null;
+    }
+
+    return () => {
+      if (audio) {
+        audio.srcObject = null;
+      }
+    };
+  }, [stream, isLocalPresenter]);
+
+  if (isLocalPresenter) return null;
+
+  return (
+    <audio
+      ref={audioRef}
+      autoPlay
+      playsInline
+      style={{ position: 'fixed', bottom: 0, left: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none' }}
+    />
+  );
+}
+
 export default function App() {
   // Read Room ID & Map Type from URL query parameters
   const [mapType, setMapType] = useState(() => {
@@ -48,6 +108,9 @@ export default function App() {
   const [avatarConfig, setAvatarConfig] = useState(AVATAR_PRESETS[0]);
   const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
   const [viewMode, setViewMode] = useState('fpp'); // 'fpp' | 'tpp' | 'presentation'
+
+  // HUD and UI Visibility toggle (Key 'i' / 'I')
+  const [isHudVisible, setIsHudVisible] = useState(true);
 
   // Cursor Mode
   const [isCursorFree, setIsCursorFree] = useState(false);
@@ -571,6 +634,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleNumberKeys);
   }, [hasEntered, socket]);
 
+  // Hotkey 'i' / 'I': Toggle HUD and on-screen boxes visibility
+  useEffect(() => {
+    const handleToggleHudKey = (e) => {
+      if (!hasEntered) return;
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        setIsHudVisible((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleToggleHudKey);
+    return () => window.removeEventListener('keydown', handleToggleHudKey);
+  }, [hasEntered]);
+
   // Collaborative Whiteboard handlers
   const handleOpenWhiteboard = () => {
     if (whiteboardUser && whiteboardUser.userId !== socket?.id) {
@@ -889,12 +966,13 @@ export default function App() {
                   onClick={() => handleSelectLobbyMap('hostel')}
                   className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all ${
                     mapType === 'hostel'
-                      ? 'bg-amber-50 border-2 border-amber-600 shadow-md ring-2 ring-amber-500/20'
+                      ? 'shadow-md ring-2 ring-amber-500/20'
                       : 'bg-gray-50 border-gray-300 hover:bg-gray-100 opacity-75'
                   }`}
+                  style={mapType === 'hostel' ? { backgroundColor: '#fffbeb', borderColor: '#d97706' } : {}}
                 >
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Bed className={`w-4 h-4 ${mapType === 'hostel' ? 'text-amber-600' : 'text-gray-500'}`} />
+                    <Bed className="w-4 h-4" style={{ color: mapType === 'hostel' ? '#d97706' : '#6b7280' }} />
                     <span className="font-extrabold text-xs text-gray-900">Hostel Room</span>
                   </div>
                   <p className="text-[10px] text-gray-600 leading-tight">
@@ -906,13 +984,11 @@ export default function App() {
 
             <button
               type="submit"
-              className={`w-full py-3.5 px-4 rounded-xl text-white font-extrabold text-sm shadow-xl transition-all transform active:scale-98 mt-2 ${
-                mapType === 'theatre'
-                  ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
-                  : mapType === 'hostel'
-                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30'
-                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
-              }`}
+              className="w-full py-3.5 px-4 rounded-xl font-extrabold text-sm shadow-xl transition-all transform active:scale-98 mt-2 cursor-pointer"
+              style={{
+                backgroundColor: mapType === 'theatre' ? '#dc2626' : mapType === 'hostel' ? '#d97706' : '#2563eb',
+                color: '#ffffff'
+              }}
             >
               {mapType === 'theatre'
                 ? 'Enter Movie Theatre'
@@ -1065,8 +1141,23 @@ export default function App() {
         <ContactShadows position={[0, 0.005, 0]} opacity={0.45} scale={26} blur={1.4} far={5} />
       </Canvas>
 
+      {/* Remote Screen Share Audio Playback Element */}
+      <RemoteScreenAudio
+        stream={screenPresenter?.stream}
+        isLocalPresenter={screenPresenter?.presenterId === socket?.id}
+      />
+
+      {/* Floating HUD visibility indicator when hidden */}
+      {!isHudVisible && (
+        <div className="fixed top-4 right-4 z-50 pointer-events-none flex items-center gap-2 bg-black/75 text-white/90 text-xs font-semibold px-3 py-1.5 rounded-full border border-white/20 backdrop-blur-md shadow-2xl animate-pulse">
+          <span>Press</span>
+          <kbd className="font-mono font-bold text-white bg-white/25 px-1.5 py-0.5 rounded border border-white/30 text-[11px]">I</kbd>
+          <span>to show UI</span>
+        </div>
+      )}
+
       {/* Center Reticle Crosshair in FPP Aim Mode (with dynamic Seat Hover Prompt) */}
-      {viewMode === 'fpp' && !isCursorFree && (
+      {isHudVisible && viewMode === 'fpp' && !isCursorFree && (
         <div className="pointer-events-none fixed inset-0 flex items-center justify-center z-50">
           <div className="relative flex flex-col items-center justify-center">
             <div className="relative flex items-center justify-center">
@@ -1108,68 +1199,70 @@ export default function App() {
       )}
 
       {/* Floating HUD & Conference Controls */}
-      <MeetingHUD
-        roomId={roomId}
-        mapType={mapType}
-        participantCount={Object.keys(remotePlayers).length + 1}
-        userName={userName}
-        currentSocketId={socket?.id}
-        isSitting={!!currentSeat}
-        currentSeatName={currentSeat?.label}
-        onToggleSit={() => {
-          if (currentSeat) {
-            handleStandUp();
-          } else {
-            handleSeatSelect(currentMapSeats[0]);
-          }
-        }}
-        viewMode={viewMode}
-        onChangeViewMode={(mode) => {
-          setViewMode(mode);
-          if (mode === 'presentation') {
+      {isHudVisible && (
+        <MeetingHUD
+          roomId={roomId}
+          mapType={mapType}
+          participantCount={Object.keys(remotePlayers).length + 1}
+          userName={userName}
+          currentSocketId={socket?.id}
+          isSitting={!!currentSeat}
+          currentSeatName={currentSeat?.label}
+          onToggleSit={() => {
+            if (currentSeat) {
+              handleStandUp();
+            } else {
+              handleSeatSelect(currentMapSeats[0]);
+            }
+          }}
+          viewMode={viewMode}
+          onChangeViewMode={(mode) => {
+            setViewMode(mode);
+            if (mode === 'presentation') {
+              setIsCursorFree(true);
+            }
+          }}
+          onOpenCustomizer={() => {
             setIsCursorFree(true);
+            setIsCustomizerOpen(true);
+          }}
+          onReaction={handleReaction}
+          onLeaveMeeting={handleLeaveMeeting}
+          isCursorFree={isCursorFree}
+          onToggleCursorFree={handleToggleCursor}
+          isMicActive={isMicActive}
+          onToggleMic={handleToggleMic}
+          isCamActive={isCamActive}
+          onToggleCam={toggleCamera}
+          localStream={localStream}
+          camZoom={camZoom}
+          onChangeCamZoom={handleCamZoomChange}
+          isScreenSharing={isScreenSharing}
+          onToggleScreenShare={toggleScreenShare}
+          screenPresenter={screenPresenter}
+          iceConnectionStatus={iceConnectionStatus}
+          onThrowProjectile={handleThrowProjectile}
+          onSendEmoji={handleSendEmoji}
+          hoveredSeatInfo={
+            hoveredSeatId
+              ? {
+                  seatId: hoveredSeatId,
+                  isOccupied: hoveredSeatOccupied,
+                  occupantName: occupiedSeatIds[hoveredSeatId]
+                }
+              : null
           }
-        }}
-        onOpenCustomizer={() => {
-          setIsCursorFree(true);
-          setIsCustomizerOpen(true);
-        }}
-        onReaction={handleReaction}
-        onLeaveMeeting={handleLeaveMeeting}
-        isCursorFree={isCursorFree}
-        onToggleCursorFree={handleToggleCursor}
-        isMicActive={isMicActive}
-        onToggleMic={handleToggleMic}
-        isCamActive={isCamActive}
-        onToggleCam={toggleCamera}
-        localStream={localStream}
-        camZoom={camZoom}
-        onChangeCamZoom={handleCamZoomChange}
-        isScreenSharing={isScreenSharing}
-        onToggleScreenShare={toggleScreenShare}
-        screenPresenter={screenPresenter}
-        iceConnectionStatus={iceConnectionStatus}
-        onThrowProjectile={handleThrowProjectile}
-        onSendEmoji={handleSendEmoji}
-        hoveredSeatInfo={
-          hoveredSeatId
-            ? {
-                seatId: hoveredSeatId,
-                isOccupied: hoveredSeatOccupied,
-                occupantName: occupiedSeatIds[hoveredSeatId]
-              }
-            : null
-        }
-        whiteboardUser={whiteboardUser}
-        onOpenWhiteboard={handleOpenWhiteboard}
-        theatreLightsOn={theatreLightsOn}
-        onToggleTheatreLights={handleToggleTheatreLights}
-        onOpenMoviePlayer={() => {
-          setIsCursorFree(true);
-          setIsMoviePlayerOpen(true);
-        }}
-        isModalOpen={isMoviePlayerOpen || isWhiteboardOpen || isCustomizerOpen}
-      />
+          whiteboardUser={whiteboardUser}
+          onOpenWhiteboard={handleOpenWhiteboard}
+          theatreLightsOn={theatreLightsOn}
+          onToggleTheatreLights={handleToggleTheatreLights}
+          onOpenMoviePlayer={() => {
+            setIsCursorFree(true);
+            setIsMoviePlayerOpen(true);
+          }}
+          isModalOpen={isMoviePlayerOpen || isWhiteboardOpen || isCustomizerOpen}
+        />
+      )}
 
       {/* Fullscreen Hit Splatter Overlay (Tomato, Egg, Water Balloon) */}
       <SplatterOverlay splatterData={splatterData} />

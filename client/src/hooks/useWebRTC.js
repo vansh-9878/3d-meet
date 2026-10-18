@@ -660,11 +660,24 @@ export function useWebRTC(socket, roomId, userName) {
                 incomingScreenStream.addTrack(event.track);
               }
             }
+            // Always create a new MediaStream instance so React state change detection triggers child audio/video updates
+            const clonedStream = new MediaStream(incomingScreenStream.getTracks());
             setScreenPresenter(prev => ({
               presenterId: caller,
               presenterName: prev?.presenterName || 'Presenter',
-              stream: incomingScreenStream
+              stream: clonedStream
             }));
+
+            event.track.onunmute = () => {
+              console.log(`[WebRTC Screen] Track unmuted (${event.track.kind}) from ${caller}`);
+              if (incomingScreenStream) {
+                setScreenPresenter(prev => ({
+                  presenterId: caller,
+                  presenterName: prev?.presenterName || 'Presenter',
+                  stream: new MediaStream(incomingScreenStream.getTracks())
+                }));
+              }
+            };
           };
 
           screenPC.onicecandidate = (event) => {
